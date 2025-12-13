@@ -1,6 +1,6 @@
 # 🤖 AI Document Chat - Paggo Case
 
-> A Fullstack application that allows users to upload PDF documents and interact with them using Generative AI (RAG).
+> A Fullstack application that allows users to upload documents and interact with them using Generative AI (RAG).
 
 ## 🚀 Live Demo
 Check out the application running in production:
