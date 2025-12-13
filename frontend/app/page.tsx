@@ -238,7 +238,7 @@ export default function Home() {
                 ${uploading ? 'opacity-80 pointer-events-none' : ''}
             `}>
                             {uploading ? <Loader2 size={16} className="animate-spin" /> : <Upload size={16} />}
-                            <span>{uploading ? `Uploading ${uploadProgress}%` : 'Upload Invoice'}</span>
+                            <span>{uploading ? `Uploading ${uploadProgress}%` : 'Upload'}</span>
                             <input type="file" className="hidden" accept="image/*,application/pdf" onChange={handleUpload} disabled={uploading} />
                         </label>
                         {/* Minimal Progress Bar below button */}
