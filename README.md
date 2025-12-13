@@ -51,7 +51,7 @@ If you want to run this project locally on your machine, please follow the detai
 
 ## 🧩 How it Works (Architecture)
 
-1.  **Upload:** The user uploads a PDF via the Frontend.
+1.  **Upload:** The user uploads a document via the Frontend.
 2.  **Storage:** The file is saved in a public Supabase Storage bucket.
 3.  **Extraction:** The Backend downloads the file and uses **Tesseract.js (OCR)** to extract all text content from the document.
 4.  **Analysis:** When the user asks a question, the full document text is injected directly into the **Gemini** context window.
