@@ -35,7 +35,7 @@ This project was built using a modern, scalable architecture ensuring separation
 ## ✨ Key Features
 
 * **🔐 Secure Authentication:** Seamless login via Google OAuth using Supabase.
-* **📂 PDF Upload:** Users can upload PDF documents directly to the cloud (Supabase Storage).
+* **📂 Upload:** Users can upload documents directly to the cloud (Supabase Storage).
 * **🧠 Intelligent Context:** The app extracts full text from documents using **OCR (Optical Character Recognition)**, allowing the AI to answer specific questions based on the complete document context.
 * **💬 Interactive Chat:** A clean, responsive chat interface to query the documents.
 
