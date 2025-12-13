@@ -107,6 +107,32 @@ export class DocumentsService {
 
     async remove(id: string, userId: string) {
         const doc = await this.findOne(id, userId); // Ensure existence and ownership
+
+        // Delete from Supabase Storage
+        if (doc.fileUrl) {
+            try {
+                const url = new URL(doc.fileUrl);
+                // Extract path after /documents/
+                // Supabase URLs: .../storage/v1/object/public/documents/uploads/filename.ext
+                const pathParts = url.pathname.split('/documents/');
+                if (pathParts.length > 1) {
+                    const filePath = pathParts[1]; // Should be "uploads/filename.ext"
+                    console.log(`[DocumentsService] Deleting file from Storage: ${filePath}`);
+                    const { error } = await this.supabase.storage
+                        .from('documents')
+                        .remove([filePath]);
+
+                    if (error) {
+                        console.error('[DocumentsService] Failed to delete file from Supabase:', error);
+                        // We continue even if storage delete fails to ensure DB is cleaned up? 
+                        // Usually better to log and proceed, or orphaned DB records are worse than orphaned files.
+                    }
+                }
+            } catch (e) {
+                console.error('[DocumentsService] Error parsing file URL:', e);
+            }
+        }
+
         return this.prisma.$transaction(async (tx) => {
             console.log(`[DocumentsService] Deleting messages for doc: ${doc.id}`);
             const deleted = await tx.chatMessage.deleteMany({

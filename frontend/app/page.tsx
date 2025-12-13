@@ -24,6 +24,7 @@ export default function Home() {
     const { docs, loading: loadingDocs, fetchDocuments, removeDocument } = useDocuments();
     const [uploading, setUploading] = useState(false);
     const [processing, setProcessing] = useState(false);
+    const [isDeleting, setIsDeleting] = useState(false); // New state for delete loading
     const [uploadProgress, setUploadProgress] = useState(0);
 
     // Modal Visibility States
@@ -129,15 +130,18 @@ export default function Home() {
 
     const handleDeleteDocument = async () => {
         if (!deleteModal.docId || !user) return;
+        setIsDeleting(true); // Start loading
 
         try {
             await axios.delete(`/api/documents/${deleteModal.docId}?userId=${user.id}`);
             // Optimistic update via Context
             removeDocument(deleteModal.docId);
             setDeleteModal({ show: false, docId: null, docTitle: '' });
+            setIsDeleting(false); // Stop loading before success modal
             setDeleteSuccessModal(true);
         } catch (error) {
             console.error('Failed to delete document', error);
+            setIsDeleting(false);
             alert("Failed to delete document.");
         }
     };
@@ -149,6 +153,8 @@ export default function Home() {
             </div>
         );
     }
+
+    // ... [Code omitted for brevity until DeleteModal section] ...
 
     // GUEST VIEW (Landing Page Style for Unauthenticated Users)
     if (!user) {
@@ -348,27 +354,41 @@ export default function Home() {
                 <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-in fade-in duration-200">
                     <div className="bg-[#111827] border border-slate-700 rounded-lg p-6 max-w-sm w-full shadow-2xl">
                         <div className="flex flex-col items-center text-center">
-                            <div className="w-12 h-12 bg-red-500/10 rounded-full flex items-center justify-center mb-4 text-red-500">
-                                <Trash2 size={24} />
-                            </div>
-                            <h3 className="text-lg font-bold text-white mb-2">Delete Document?</h3>
-                            <p className="text-slate-400 text-sm mb-6">
-                                Are you sure you want to delete <strong>{deleteModal.docTitle}</strong>? This action cannot be undone.
-                            </p>
-                            <div className="flex gap-3 w-full">
-                                <button
-                                    onClick={() => setDeleteModal({ show: false, docId: null, docTitle: '' })}
-                                    className="flex-1 py-2 px-4 rounded bg-slate-800 hover:bg-slate-700 text-slate-300 font-medium transition-colors"
-                                >
-                                    Cancel
-                                </button>
-                                <button
-                                    onClick={handleDeleteDocument}
-                                    className="flex-1 py-2 px-4 rounded bg-red-600 hover:bg-red-500 text-white font-medium transition-colors"
-                                >
-                                    Delete
-                                </button>
-                            </div>
+                            {isDeleting ? (
+                                <>
+                                    <div className="w-12 h-12 bg-blue-500/10 rounded-full flex items-center justify-center mb-4 text-blue-500">
+                                        <Loader2 size={24} className="animate-spin" />
+                                    </div>
+                                    <h3 className="text-lg font-bold text-white mb-2">Deleting...</h3>
+                                    <p className="text-slate-400 text-sm mb-6">
+                                        Removing document and associated memory.
+                                    </p>
+                                </>
+                            ) : (
+                                <>
+                                    <div className="w-12 h-12 bg-red-500/10 rounded-full flex items-center justify-center mb-4 text-red-500">
+                                        <Trash2 size={24} />
+                                    </div>
+                                    <h3 className="text-lg font-bold text-white mb-2">Delete Document?</h3>
+                                    <p className="text-slate-400 text-sm mb-6">
+                                        Are you sure you want to delete <strong>{deleteModal.docTitle}</strong>? This action cannot be undone.
+                                    </p>
+                                    <div className="flex gap-3 w-full">
+                                        <button
+                                            onClick={() => setDeleteModal({ show: false, docId: null, docTitle: '' })}
+                                            className="flex-1 py-2 px-4 rounded bg-slate-800 hover:bg-slate-700 text-slate-300 font-medium transition-colors"
+                                        >
+                                            Cancel
+                                        </button>
+                                        <button
+                                            onClick={handleDeleteDocument}
+                                            className="flex-1 py-2 px-4 rounded bg-red-600 hover:bg-red-500 text-white font-medium transition-colors"
+                                        >
+                                            Delete
+                                        </button>
+                                    </div>
+                                </>
+                            )}
                         </div>
                     </div>
                 </div>
