@@ -95,4 +95,5 @@ The frontend is a Next.js application that proxies API requests to the backend.
 
 The frontend uses **Next.js Rewrites** to proxy API calls:
 - Calls to `/api/*` in the frontend are forwarded to `${BACKEND_URL}/*`.
+- If `BACKEND_URL` is not set (e.g., in Vercel), it defaults to the production Render URL (`https://paggo-case-o4s3.onrender.com`).
 - This avoids CORS issues and simplifies configuration.
