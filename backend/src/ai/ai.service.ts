@@ -1,4 +1,4 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger, HttpException, HttpStatus } from '@nestjs/common';
 import { GoogleGenerativeAI } from '@google/generative-ai';
 
 @Injectable()
@@ -14,7 +14,7 @@ export class AiService {
         try {
             if (!process.env.GEMINI_API_KEY) {
                 this.logger.error('GEMINI_API_KEY is missing');
-                return "GEMINI_API_KEY is not set. Cannot generate summary.";
+                throw new Error("GEMINI_API_KEY is not set.");
             }
 
             const modelName = 'gemini-flash-latest';
@@ -28,14 +28,14 @@ export class AiService {
             return response.text();
         } catch (error: any) {
             this.logger.error('Error generating summary with Gemini', error);
-            return `Error generating summary: ${error.message}`;
+            throw new Error(`Error generating summary: ${error.message}`);
         }
     }
 
     async chatAboutDocument(documentText: string, userQuestion: string): Promise<string> {
         try {
             if (!process.env.GEMINI_API_KEY) {
-                return "GEMINI_API_KEY is not set.";
+                throw new Error("GEMINI_API_KEY is not set.");
             }
             const model = this.genAI.getGenerativeModel({ model: 'gemini-flash-latest' });
 
@@ -46,7 +46,10 @@ export class AiService {
             return response.text();
         } catch (error: any) {
             this.logger.error('Error chatting with Gemini', error);
-            return `I cannot answer right now (AI Error): ${error.message}`;
+            if (error.status === 429 || error.message?.includes('429') || error.message?.includes('quota')) {
+                throw new HttpException('Rate limit exceeded', HttpStatus.TOO_MANY_REQUESTS);
+            }
+            throw new HttpException('Failed to generate AI response', HttpStatus.INTERNAL_SERVER_ERROR);
         }
     }
 }

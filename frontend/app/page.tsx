@@ -23,6 +23,7 @@ export default function Home() {
     // Dashboard State (Global Docs Context)
     const { docs, loading: loadingDocs, fetchDocuments, removeDocument } = useDocuments();
     const [uploading, setUploading] = useState(false);
+    const [processing, setProcessing] = useState(false);
     const [uploadProgress, setUploadProgress] = useState(0);
 
     // Modal Visibility States
@@ -61,7 +62,7 @@ export default function Home() {
 
     const syncUser = async (u: User) => {
         try {
-            await axios.post(`${process.env.NEXT_PUBLIC_API_URL}/users/sync`, {
+            await axios.post(`/api/users/sync`, {
                 id: u.id,
                 email: u.email
             });
@@ -100,13 +101,16 @@ export default function Home() {
         if (user.email) formData.append('email', user.email);
 
         try {
-            await axios.post(`${process.env.NEXT_PUBLIC_API_URL}/documents/upload`, formData, {
+            await axios.post(`/api/documents/upload`, formData, {
                 headers: {
                     'Content-Type': 'multipart/form-data',
                 },
                 onUploadProgress: (progressEvent) => {
                     const percentCompleted = Math.round((progressEvent.loaded * 100) / (progressEvent.total || 1));
                     setUploadProgress(percentCompleted);
+                    if (percentCompleted === 100) {
+                        setProcessing(true);
+                    }
                 }
             });
 
@@ -117,6 +121,7 @@ export default function Home() {
             setErrorModal({ show: true, message: 'Failed to upload document. Please try again or check your network connection.' });
         } finally {
             setUploading(false);
+            setProcessing(false);
             setUploadProgress(0);
             e.target.value = '';
         }
@@ -126,7 +131,7 @@ export default function Home() {
         if (!deleteModal.docId || !user) return;
 
         try {
-            await axios.delete(`${process.env.NEXT_PUBLIC_API_URL}/documents/${deleteModal.docId}?userId=${user.id}`);
+            await axios.delete(`/api/documents/${deleteModal.docId}?userId=${user.id}`);
             // Optimistic update via Context
             removeDocument(deleteModal.docId);
             setDeleteModal({ show: false, docId: null, docTitle: '' });
@@ -252,7 +257,19 @@ export default function Home() {
                 {loadingDocs ? (
                     <div className="flex justify-center py-32"><Loader2 className="animate-spin text-slate-600 w-8 h-8" /></div>
                 ) : docs.length === 0 ? (
-                    <div className="flex flex-col items-center justify-center py-32 bg-slate-800 border border-dashed border-slate-800 rounded-lg">
+                    <div className="flex flex-col items-center justify-center py-32 bg-slate-800 border border-dashed border-slate-800 rounded-lg relative">
+                        {uploading && (
+                            <div className="absolute inset-0 flex items-center justify-center text-xs font-bold text-white z-10 transition-all duration-300 bg-slate-800/90 rounded-lg">
+                                {processing ? (
+                                    <span className="flex items-center gap-1 animate-pulse">
+                                        <Loader2 size={12} className="animate-spin" />
+                                        Processing...
+                                    </span>
+                                ) : (
+                                    `${uploadProgress}%`
+                                )}
+                            </div>
+                        )}
                         <div className="w-12 h-12 bg-slate-800/50 rounded-full flex items-center justify-center text-slate-500 mb-4">
                             <PieChart size={24} />
                         </div>

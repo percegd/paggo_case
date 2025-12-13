@@ -8,6 +8,7 @@ import {
     UseInterceptors,
     Body,
     Query,
+    Patch,
     BadRequestException
 } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';

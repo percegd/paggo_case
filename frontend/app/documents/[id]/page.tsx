@@ -1,7 +1,7 @@
 'use client';
 import { useEffect, useState, useRef } from 'react';
 import { useParams, useRouter } from 'next/navigation';
-import { Send, ArrowLeft, Loader2, Bot, User, AlertTriangle, X, Heading, ChevronDown, ChevronUp, Download, Trash2, CheckCircle } from 'lucide-react';
+import { Send, ArrowLeft, Loader2, Bot, User, AlertTriangle, X, Heading, ChevronDown, ChevronUp, Download, Trash2, CheckCircle, Clock } from 'lucide-react';
 import Link from 'next/link';
 import ReactMarkdown from 'react-markdown';
 import { supabase } from '@/lib/supabase';
@@ -43,6 +43,7 @@ export default function DocumentDetail() {
     const [downloading, setDownloading] = useState(false);
     const [expandedData, setExpandedData] = useState(false);
     const [actionError, setActionError] = useState<string | null>(null);
+    const [showRateLimitModal, setShowRateLimitModal] = useState(false);
 
     const [user, setUser] = useState<any>(null);
 
@@ -75,7 +76,7 @@ export default function DocumentDetail() {
         setLoading(true);
         setError(null);
         try {
-            const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/documents/${id}?userId=${currentUserId}`);
+            const res = await fetch(`/api/documents/${id}?userId=${currentUserId}`);
             console.log(`[DocumentDetail] Response status: ${res.status}`);
 
             if (!res.ok) {
@@ -112,13 +113,20 @@ export default function DocumentDetail() {
         setMessages(prev => [...prev, tempMsg]);
 
         try {
-            const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/chat/${id}`, {
+            const res = await fetch(`/api/chat/${id}`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ message: originalInput, userId: user?.id }),
             });
 
-            if (!res.ok) throw new Error('Failed to send message');
+            if (!res.ok) {
+                if (res.status === 429) {
+                    setShowRateLimitModal(true);
+                    setMessages(prev => prev.filter(m => m.id !== tempId)); // Remove optimistic message on rate limit
+                    return;
+                }
+                throw new Error('Failed to send message');
+            }
 
             const data = await res.json();
             setMessages(prev => [...prev.filter(m => m.id !== tempId), tempMsg, data]);
@@ -144,7 +152,7 @@ export default function DocumentDetail() {
         if (!user || !id) return;
         setDeleting(true);
         try {
-            const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/documents/${id}?userId=${user.id}`, {
+            const res = await fetch(`/api/documents/${id}?userId=${user.id}`, {
                 method: 'DELETE',
             });
 
@@ -173,7 +181,7 @@ export default function DocumentDetail() {
 
         try {
             // 1. Fetch Original File (Supabase or Legacy Local)
-            const fetchUrl = doc.fileUrl.startsWith('http') ? doc.fileUrl : `${process.env.NEXT_PUBLIC_API_URL}/${doc.fileUrl}`;
+            const fetchUrl = doc.fileUrl.startsWith('http') ? doc.fileUrl : `/api/${doc.fileUrl}`;
             const fileRes = await fetch(fetchUrl);
             const fileBlob = await fileRes.blob();
             const fileArrayBuffer = await fileBlob.arrayBuffer();
@@ -244,14 +252,44 @@ export default function DocumentDetail() {
                 // If Image, add to a blank page at start
                 const page = mergedPdf.addPage();
                 const { width, height } = page.getSize();
+
+                let image;
+                if (doc.fileUrl.toLowerCase().endsWith('.png')) {
+                    image = await mergedPdf.embedPng(fileArrayBuffer);
+                } else if (doc.fileUrl.toLowerCase().match(/\.(jpg|jpeg)$/)) {
+                    image = await mergedPdf.embedJpg(fileArrayBuffer);
+                }
+
+                if (image) {
+                    const imgDims = image.scale(1);
+                    const maxWidth = width - 40;
+                    const maxHeight = height - 40;
+
+                    // Calculate scale to fit
+                    const scaleWidth = maxWidth / imgDims.width;
+                    const scaleHeight = maxHeight / imgDims.height;
+                    const scale = Math.min(scaleWidth, scaleHeight, 1); // Don't upscale, only downscale
+
+                    const drawWidth = imgDims.width * scale;
+                    const drawHeight = imgDims.height * scale;
+
+                    page.drawImage(image, {
+                        x: (width - drawWidth) / 2, // Center horizontally
+                        y: (height - drawHeight) / 2, // Center vertically
+                        width: drawWidth,
+                        height: drawHeight,
+                    });
+                }
+
             }
 
-            // Embed Report Pages
+
+            // Embed Report Pages (Common for both)
             const reportPdf = await PDFDocument.load(reportPdfBytes);
             const reportPages = await mergedPdf.copyPages(reportPdf, reportPdf.getPageIndices());
             reportPages.forEach((page) => mergedPdf.addPage(page));
 
-            // 4. Save and Download
+            // 4. Save and Download (Common for both)
             const pdfBytes = await mergedPdf.save();
             const blob = new Blob([pdfBytes as any], { type: 'application/pdf' });
             const link = document.createElement('a');
@@ -259,11 +297,10 @@ export default function DocumentDetail() {
             const safeTitle = doc.title.replace(/\.[^/.]+$/, "").replace(/[^a-z0-9]/gi, '_');
             link.download = `Report_${safeTitle}.pdf`;
             link.click();
-
         } catch (e) {
             console.error('Download PDF Error:', e);
             console.error('Download PDF Error:', e);
-            setActionError("Erro ao gerar PDF. Verifique se o arquivo original está acessível.");
+            setActionError("Error generating PDF. Please check if the original file is accessible.");
         } finally {
             setDownloading(false);
         }
@@ -288,6 +325,33 @@ export default function DocumentDetail() {
                             className="w-full py-2.5 px-4 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 font-medium transition-colors"
                         >
                             Close
+                        </button>
+                    </div>
+                </div>
+            </div>
+        );
+    };
+
+    // Rate Limit Modal
+    const RateLimitModal = () => {
+        if (!showRateLimitModal) return null;
+        return (
+            <div className="fixed inset-0 z-[70] flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-in fade-in duration-200">
+                <div className="bg-[#111827] border border-orange-500/30 rounded-xl max-w-sm w-full shadow-2xl overflow-hidden scale-100 animate-in zoom-in-95 duration-200">
+                    <div className="absolute top-0 left-0 w-1 h-full bg-orange-500"></div>
+                    <div className="p-6 text-center">
+                        <div className="w-16 h-16 bg-orange-500/10 rounded-full flex items-center justify-center mx-auto mb-4 text-orange-500 animate-pulse">
+                            <Clock size={32} />
+                        </div>
+                        <h3 className="text-xl font-bold text-white mb-2">High Traffic</h3>
+                        <p className="text-slate-400 text-sm mb-6 leading-relaxed">
+                            We are experiencing high demand with our AI provider. Please wait a few seconds before sending another message.
+                        </p>
+                        <button
+                            onClick={() => setShowRateLimitModal(false)}
+                            className="w-full py-2.5 px-4 rounded-lg bg-orange-600 hover:bg-orange-500 text-white font-medium transition-colors shadow-lg shadow-orange-900/20"
+                        >
+                            I'll wait
                         </button>
                     </div>
                 </div>
@@ -360,13 +424,7 @@ export default function DocumentDetail() {
                         <h1 className="text-lg font-bold text-white truncate">{doc.title}</h1>
                     </div>
                     <div className="ml-auto flex items-center gap-2">
-                        <button
-                            onClick={() => setShowDeleteModal(true)}
-                            className="p-2 text-slate-400 hover:text-red-500 hover:bg-red-500/10 rounded-lg transition-colors"
-                            title="Delete Document"
-                        >
-                            <Trash2 size={20} />
-                        </button>
+
                         <button
                             onClick={handleDownloadPDF}
                             disabled={downloading}
@@ -375,7 +433,7 @@ export default function DocumentDetail() {
                             {downloading ? (
                                 <>
                                     <Loader2 size={16} className="animate-spin" />
-                                    <span>Gerando PDF...</span>
+                                    <span>Generating PDF...</span>
                                 </>
                             ) : (
                                 <>
@@ -534,6 +592,7 @@ export default function DocumentDetail() {
 
             {/* Simple Error Modal for Actions */}
             <ActionErrorModal />
+            <RateLimitModal />
 
             {/* Delete Confirmation Modal */}
             {showDeleteModal && (
