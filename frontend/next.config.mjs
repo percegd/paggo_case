@@ -5,7 +5,7 @@ const nextConfig = {
         return [
             {
                 source: '/api/:path*',
-                destination: `${process.env.BACKEND_URL || 'http://localhost:3001'}/:path*`, // Proxy to Backend
+                destination: `https://paggo-case-o4s3.onrender.com/:path*`, // Proxy to Render Backend
             },
         ];
     },
