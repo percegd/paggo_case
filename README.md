@@ -6,8 +6,6 @@
 Check out the application running in production:
 👉 **[https://paggo-case-six.vercel.app](https://paggo-case-six.vercel.app)**
 
-*(Note: The backend is hosted on a free tier service. The first request might take up to 60 seconds to wake up the server. Please be patient!)*
-
 ---
 
 ## 🛠️ Tech Stack
