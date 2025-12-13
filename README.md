@@ -1,127 +1,68 @@
-# Paggo.ai - Intelligent Document Analysis
+# 🤖 AI Document Chat - Paggo Case
 
-Paggo is a powerful, full-stack application designed to revolutionize how financial teams interact with their documents. By leveraging advanced OCR (Optical Character Recognition) and the latest in Generative AI (Google Gemini), Paggo transforms static PDFs and images into dynamic, interactive data sources.
+> A Fullstack application that allows users to upload PDF documents and interact with them using Generative AI (RAG).
 
-![Paggo Dashboard](https://via.placeholder.com/800x400?text=Paggo+Dashboard+Placeholder)
+## 🚀 Live Demo
+Check out the application running in production:
+👉 **[https://paggo-case-six.vercel.app](https://paggo-case-six.vercel.app)**
 
-## 🚀 Key Features
+*(Note: The backend is hosted on a free tier service. The first request might take up to 60 seconds to wake up the server. Please be patient!)*
 
-*   **📄 Smart Document Upload:** Support for PDF and Image files (PNG, JPG) with real-time upload progress.
-*   **🔍 Advanced OCR:** Automatically extracts text from uploaded documents using Tesseract.js.
-*   **🤖 AI-Powered Analysis:**
-    *   **Summarization:** Instantly generates concise summaries of financial documents using Google Gemini.
-    *   **Interactive Chat:** Ask questions about your document's content in natural language.
-*   **📊 PDF Reporting:** Generate professional downloadable PDF reports that include the original file, extracted text, AI summary, and your chat history.
-*   **🔐 Secure & Scalable:**
-    *   **Authentication:** Robust user authentication via Supabase (Google OAuth).
-    *   **Storage:** Secure document storage in Supabase Buckets.
-    *   **Database:** Relational data management with PostgreSQL and Prisma.
+---
 
 ## 🛠️ Tech Stack
 
-### Frontend (`/frontend`)
-*   **Framework:** [Next.js 14](https://nextjs.org/) (App Router)
-*   **Language:** TypeScript
-*   **Styling:** Tailwind CSS
-*   **State Management:** React Context API
-*   **PDF Generation:** `jspdf`, `pdf-lib`
-*   **Icons:** Lucide React
+This project was built using a modern, scalable architecture ensuring separation of concerns and type safety.
 
-### Backend (`/backend`)
-*   **Framework:** [NestJS](https://nestjs.com/)
-*   **Language:** TypeScript
-*   **Database ORM:** [Prisma](https://www.prisma.io/)
-*   **AI Engine:** Google Generative AI (Gemini Pro)
-*   **OCR Engine:** `tesseract.js`
-*   **File Parsing:** `pdf-parse`
+**Frontend:**
+* **Framework:** React (Next.js 14)
+* **Styling:** TailwindCSS
+* **Authentication:** Supabase Auth (Google OAuth)
+* **HTTP Client:** Axios
 
-### Infrastructure
-*   **Database:** PostgreSQL (via Supabase or Local)
-*   **Auth & Storage:** [Supabase](https://supabase.com/)
-*   **Deployment:** Vercel (Frontend), Render (Backend)
+**Backend:**
+* **Framework:** NestJS (Node.js)
+* **Language:** TypeScript
+* **Database ORM:** Prisma
+* **AI Engine:** Google Generative AI SDK
+* **LLM Model:** Google Gemini (gemini-1.5-flash)
 
-## ⚙️ Prerequisites
+**Infrastructure:**
+* **Frontend Hosting:** Vercel
+* **Backend Hosting:** Render
+* **Database & Storage:** Supabase (PostgreSQL + Buckets)
 
-*   **Node.js** (v18 or higher)
-*   **npm** or **yarn**
-*   **Git**
-*   **Supabase Account** (for Auth, DB, and Storage)
-*   **Google AI Studio Key** (for Gemini API)
+---
 
-## 🚀 Getting Started
+## ✨ Key Features
 
-Follow these steps to set up the project locally. For a more detailed guide, see [`SETUP.md`](./SETUP.md).
+* **🔐 Secure Authentication:** Seamless login via Google OAuth using Supabase.
+* **📂 PDF Upload:** Users can upload PDF documents directly to the cloud (Supabase Storage).
+* **🧠 Intelligent Context:** The app extracts full text from documents using **OCR (Optical Character Recognition)**, allowing the AI to answer specific questions based on the complete document context.
+* **💬 Interactive Chat:** A clean, responsive chat interface to query the documents.
 
-### 1. Backend Setup
+---
 
-1.  Navigate to the backend folder:
-    ```bash
-    cd backend
-    ```
-2.  Install dependencies:
-    ```bash
-    npm install
-    ```
-3.  Configure environment variables:
-    ```bash
-    cp .env.example .env
-    ```
-    Update `.env` with your `DATABASE_URL`, `SUPABASE_URL`, `SUPABASE_KEY`, and `GEMINI_API_KEY`.
-4.  Sync database schema:
-    ```bash
-    npx prisma db push
-    ```
-5.  Start the server:
-    ```bash
-    npm run start:dev
-    ```
-    *Server runs on port 3001.*
+## ⚙️ Local Installation
 
-### 2. Frontend Setup
+If you want to run this project locally on your machine, please follow the detailed step-by-step guide in the setup document:
 
-1.  Navigate to the frontend folder:
-    ```bash
-    cd frontend
-    ```
-2.  Install dependencies:
-    ```bash
-    npm install
-    ```
-3.  Configure environment variables:
-    ```bash
-    cp .env.local.example .env.local
-    ```
-    Update `.env.local` with `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY`, and `BACKEND_URL` (default: `http://localhost:3001`).
-4.  Start the development server:
-    ```bash
-    npm run dev
-    ```
-    *App runs on port 3000.*
+👉 **[Read the Installation Guide (SETUP.md)](./SETUP.md)**
 
-> **Important:** Keep the frontend running on port `3000` to ensure Google OAuth compatibility.
+---
 
-## 📦 Environment Variables
+## 🧩 How it Works (Architecture)
 
-### Backend (`backend/.env`)
-| Variable | Description |
-| :--- | :--- |
-| `DATABASE_URL` | PostgreSQL connection string (Transaction Mode) |
-| `SUPABASE_URL` | Your project URL from Supabase |
-| `SUPABASE_KEY` | Supabase `service_role` key (for backend privileges) |
-| `GEMINI_API_KEY` | API Key from Google AI Studio |
-| `PORT` | Application port (default: 3001) |
+1.  **Upload:** The user uploads a PDF via the Frontend.
+2.  **Storage:** The file is saved in a public Supabase Storage bucket.
+3.  **Extraction:** The Backend downloads the file and uses **Tesseract.js (OCR)** to extract all text content from the document.
+4.  **Analysis:** When the user asks a question, the full document text is injected directly into the **Gemini** context window.
+5.  **Generation:** The AI generates a precise answer based on the provided document text.
 
-### Frontend (`frontend/.env.local`)
-| Variable | Description |
-| :--- | :--- |
-| `NEXT_PUBLIC_SUPABASE_URL` | Your project URL from Supabase |
-| `NEXT_PUBLIC_SUPABASE_ANON_KEY` | Supabase `anon` key (public) |
-| `BACKEND_URL` | URL of the backend API (e.g., `http://localhost:3001` or production URL) |
+---
 
-## 🤝 Contributing
+## 📞 Contact
 
-Contributions are welcome! Please fork the repository and submit a pull request for any enhancements.
+Developed by **Arthur Cruvinel Marques**.
 
-## 📄 License
-
-This project is licensed under the MIT License.
+📧 Email: [arthurcruvinel@usp.br](mailto:arthurcruvinel@usp.br)
