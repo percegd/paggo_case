@@ -42,7 +42,7 @@ export default function Home() {
             setUser(session?.user ?? null);
             if (session?.user) {
                 await syncUser(session.user);
-                fetchDocuments(session.user.id);
+                fetchDocuments(session.user.id, true);
             }
         });
 
@@ -56,7 +56,7 @@ export default function Home() {
 
         if (hasProcessing && user) {
             interval = setInterval(() => {
-                fetchDocuments(user.id);
+                fetchDocuments(user.id, true);
             }, 5000); // Poll every 5 seconds
         }
 

@@ -37,7 +37,7 @@ export function DocumentsProvider({ children }: { children: ReactNode }) {
         setLoading(true);
         setError(null);
         try {
-            const res = await axios.get(`/api/documents?userId=${userId}`);
+            const res = await axios.get(`/api/documents?userId=${userId}&t=${new Date().getTime()}`);
             setDocs(Array.isArray(res.data) ? res.data : []);
             setLastFetchedUserId(userId);
         } catch (err) {
