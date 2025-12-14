@@ -1,11 +1,12 @@
 'use client';
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
-import { Loader2, FileText, Upload, LogOut, ShieldCheck, PieChart, Activity, X, AlertTriangle, CheckCircle, Trash2 } from 'lucide-react';
+import { Loader2, FileText, Upload, LogOut, ShieldCheck, PieChart, Activity, X, AlertTriangle, CheckCircle, Trash2, Clock } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
 import { User } from '@supabase/supabase-js';
 import axios from 'axios';
 import { useDocuments } from '@/context/DocumentsContext';
+import DocumentDetailView from '@/components/DocumentDetailView';
 
 // Types
 interface Document {
@@ -22,6 +23,10 @@ export default function Home() {
 
     // Dashboard State (Global Docs Context)
     const { docs, loading: loadingDocs, fetchDocuments, removeDocument, addDocument } = useDocuments();
+
+    // SPA View State
+    const [activeDocId, setActiveDocId] = useState<string | null>(null);
+
     const [uploading, setUploading] = useState(false);
     const [processing, setProcessing] = useState(false);
     const [isDeleting, setIsDeleting] = useState(false); // New state for delete loading
@@ -56,7 +61,7 @@ export default function Home() {
 
         if (hasProcessing && user) {
             interval = setInterval(() => {
-                fetchDocuments(user.id, true);
+                fetchDocuments(user.id, true, true);
             }, 5000); // Poll every 5 seconds
         }
 
@@ -170,7 +175,10 @@ export default function Home() {
         );
     }
 
-    // ... [Code omitted for brevity until DeleteModal section] ...
+    // Detail View Wrapper
+    if (activeDocId) {
+        return <DocumentDetailView docId={activeDocId} onBack={() => setActiveDocId(null)} />;
+    }
 
     // GUEST VIEW (Landing Page Style for Unauthenticated Users)
     if (!user) {
@@ -301,7 +309,7 @@ export default function Home() {
                 ) : (
                     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
                         {docs.map((doc) => (
-                            <Link key={doc.id} href={`/documents/${doc.id}`} className="block group relative">
+                            <div key={doc.id} onClick={() => setActiveDocId(doc.id)} className="block group relative cursor-pointer">
                                 <div className="h-full bg-slate-800 border border-slate-700/50 rounded-lg hover:border-slate-500 transition-all p-6 flex flex-col group-hover:shadow-lg group-hover:shadow-blue-900/10">
                                     <div className="flex justify-between items-start mb-6">
                                         <div className="w-10 h-10 bg-slate-900 rounded flex items-center justify-center text-slate-400 group-hover:text-white transition-colors">
@@ -309,40 +317,51 @@ export default function Home() {
                                         </div>
                                         <button
                                             onClick={(e) => {
-                                                e.preventDefault(); // Prevent navigation
+                                                e.stopPropagation(); // Prevent card click
                                                 setDeleteModal({ show: true, docId: doc.id, docTitle: doc.title });
                                             }}
-                                            className="p-2 text-slate-500 hover:text-red-500 hover:bg-red-500/10 rounded-lg transition-colors"
-                                            title="Delete Document"
+                                            className="text-slate-500 hover:text-red-400 transition-colors bg-transparent hover:bg-slate-700/50 p-1.5 rounded-full"
+                                            title="Delete document"
                                         >
-                                            <Trash2 size={18} />
+                                            <Trash2 size={16} />
                                         </button>
                                     </div>
 
-                                    <h3 className="font-semibold text-white mb-2 truncate group-hover:text-blue-400 transition-colors" title={doc.title}>
-                                        {doc.title}
-                                    </h3>
-
-
-                                    <div className="flex items-center gap-2 text-xs text-slate-500 mb-4">
-                                        <Activity size={12} />
-                                        <span>Processed {new Date(doc.createdAt).toLocaleDateString()}</span>
+                                    <div className="mb-4">
+                                        <h3 className="font-semibold text-white mb-1 truncate" title={doc.title}>{doc.title}</h3>
+                                        <div className="flex items-center gap-2 text-xs text-slate-500">
+                                            <Clock size={12} />
+                                            <span>{new Date(doc.createdAt).toLocaleDateString()}</span>
+                                        </div>
                                     </div>
 
+                                    <div className="mt-auto pt-4 border-t border-slate-700 flex items-center justify-between">
+                                        <div className={`
+                                flex items-center gap-1.5 text-xs font-medium px-2 py-1 rounded-full
+                                ${doc.status === 'COMPLETED' ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20' :
+                                                doc.status === 'PROCESSING' || doc.status === 'PENDING' ? 'bg-blue-500/10 text-blue-400 border border-blue-500/20 animate-pulse' :
+                                                    'bg-red-500/10 text-red-400 border border-red-500/20'}
+                            `}>
+                                            {doc.status === 'COMPLETED' ? <CheckCircle size={12} /> :
+                                                doc.status === 'PROCESSING' || doc.status === 'PENDING' ? <Loader2 size={12} className="animate-spin" /> :
+                                                    <AlertTriangle size={12} />}
+                                            {doc.status}
+                                        </div>
+
+                                        <span className="text-xs text-blue-400 font-medium group-hover:underline flex items-center gap-1">
+                                            View Details
+                                        </span>
+                                    </div>
+
+                                    {/* Processing Badge on Card (Optional, for extra visibility) */}
                                     {doc.status === 'PROCESSING' && (
                                         <div className="absolute bottom-6 right-6 flex items-center gap-1.5 bg-blue-500/10 text-blue-400 px-2 py-1 rounded text-xs font-semibold animate-pulse border border-blue-500/20 pointer-events-none">
                                             <Loader2 size={12} className="animate-spin" />
                                             processing
                                         </div>
                                     )}
-
-                                    {doc.extractedText && (
-                                        <p className="mt-auto text-sm text-slate-400 line-clamp-2 border-t border-slate-800 pt-4">
-                                            {doc.extractedText}
-                                        </p>
-                                    )}
                                 </div>
-                            </Link>
+                            </div>
                         ))}
                     </div>
                 )}
@@ -352,168 +371,95 @@ export default function Home() {
             {showLogoutModal && (
                 <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-in fade-in duration-200">
                     <div className="bg-[#111827] border border-slate-700 rounded-lg p-6 max-w-sm w-full shadow-2xl">
-                        <h3 className="text-lg font-bold text-white mb-2">Confirm Logout</h3>
-                        <p className="text-slate-400 text-sm mb-6">Are you sure you want to end your session?</p>
-                        <div className="flex justify-end gap-3">
-                            <button
-                                onClick={() => setShowLogoutModal(false)}
-                                className="px-4 py-2 text-sm rounded bg-transparent hover:bg-slate-800 text-slate-300 font-medium transition-colors"
-                            >
-                                Cancel
-                            </button>
-                            <button
-                                onClick={handleLogout}
-                                className="px-4 py-2 text-sm rounded bg-white hover:bg-gray-200 text-black font-medium transition-colors"
-                            >
-                                Logout
-                            </button>
+                        <h3 className="text-lg font-bold text-white mb-2">Sign Out?</h3>
+                        <p className="text-slate-400 text-sm mb-6">Are you sure you want to sign out of your account?</p>
+                        <div className="flex gap-3 w-full">
+                            <button onClick={() => setShowLogoutModal(false)} className="flex-1 py-2 px-4 rounded bg-slate-800 hover:bg-slate-700 text-slate-300 font-medium transition-colors">Cancel</button>
+                            <button onClick={handleLogout} className="flex-1 py-2 px-4 rounded bg-blue-600 hover:bg-blue-500 text-white font-medium transition-colors">Sign Out</button>
                         </div>
                     </div>
                 </div>
             )}
 
-            {/* Delete Confirmation Modal */}
-            {deleteModal.show && (
-                <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-in fade-in duration-200">
-                    <div className="bg-[#111827] border border-slate-700 rounded-lg p-6 max-w-sm w-full shadow-2xl">
-                        <div className="flex flex-col items-center text-center">
-                            {isDeleting ? (
-                                <>
-                                    <div className="w-12 h-12 bg-blue-500/10 rounded-full flex items-center justify-center mb-4 text-blue-500">
-                                        <Loader2 size={24} className="animate-spin" />
-                                    </div>
-                                    <h3 className="text-lg font-bold text-white mb-2">Deleting...</h3>
-                                    <p className="text-slate-400 text-sm mb-6">
-                                        Removing document and associated memory.
-                                    </p>
-                                </>
-                            ) : (
-                                <>
-                                    <div className="w-12 h-12 bg-red-500/10 rounded-full flex items-center justify-center mb-4 text-red-500">
-                                        <Trash2 size={24} />
-                                    </div>
-                                    <h3 className="text-lg font-bold text-white mb-2">Delete Document?</h3>
-                                    <p className="text-slate-400 text-sm mb-6">
-                                        Are you sure you want to delete <strong>{deleteModal.docTitle}</strong>? This action cannot be undone.
-                                    </p>
-                                    <div className="flex gap-3 w-full">
-                                        <button
-                                            onClick={() => setDeleteModal({ show: false, docId: null, docTitle: '' })}
-                                            className="flex-1 py-2 px-4 rounded bg-slate-800 hover:bg-slate-700 text-slate-300 font-medium transition-colors"
-                                        >
-                                            Cancel
-                                        </button>
-                                        <button
-                                            onClick={handleDeleteDocument}
-                                            className="flex-1 py-2 px-4 rounded bg-red-600 hover:bg-red-500 text-white font-medium transition-colors"
-                                        >
-                                            Delete
-                                        </button>
-                                    </div>
-                                </>
-                            )}
-                        </div>
-                    </div>
-                </div>
-            )}
+            {/* Delete Modal */}
+            <DeleteModal
+                show={deleteModal.show}
+                docTitle={deleteModal.docTitle}
+                onCancel={() => setDeleteModal({ show: false, docId: null, docTitle: '' })}
+                onConfirm={handleDeleteDocument}
+                isDeleting={isDeleting}
+            />
 
-            {/* Success Modal */}
-            {successModal && (
-                <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-in fade-in duration-200">
-                    <div className="bg-[#111827] border border-emerald-500/20 rounded-lg p-6 max-w-sm w-full shadow-2xl relative overflow-hidden animate-in zoom-in-95 duration-200">
-                        <div className="absolute top-0 left-0 w-1 h-full bg-emerald-500"></div>
-                        <button
-                            onClick={() => setSuccessModal(false)}
-                            className="absolute top-4 right-4 text-slate-400 hover:text-white transition-colors"
-                        >
-                            <X size={20} />
+            {/* Success Modals */}
+            <SuccessModal show={successModal} onClose={() => setSuccessModal(false)} title="Upload Successful" message="Your document has been uploaded and is being analyzed." />
+            <SuccessModal show={deleteSuccessModal} onClose={() => setDeleteSuccessModal(false)} title="Deleted Successfully" message="The document has been removed." />
+            <ErrorModal show={errorModal.show} message={errorModal.message} onClose={() => setErrorModal({ show: false, message: '' })} />
+        </div>
+    );
+}
+
+// Subcomponents for Modals
+function DeleteModal({ show, docTitle, onCancel, onConfirm, isDeleting }: { show: boolean, docTitle: string, onCancel: () => void, onConfirm: () => void, isDeleting: boolean }) {
+    if (!show) return null;
+    return (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-in fade-in duration-200">
+            <div className="bg-[#111827] border border-slate-700 rounded-lg p-6 max-w-sm w-full shadow-2xl">
+                <div className="flex flex-col items-center text-center">
+                    <div className="w-12 h-12 bg-red-500/10 rounded-full flex items-center justify-center mb-4 text-red-500">
+                        <Trash2 size={24} />
+                    </div>
+                    <h3 className="text-lg font-bold text-white mb-2">Delete Document?</h3>
+                    <p className="text-slate-400 text-sm mb-1">Are you sure you want to delete <span className="text-white font-medium">"{docTitle}"</span>?</p>
+                    <p className="text-slate-500 text-xs mb-6">This action cannot be undone.</p>
+                    <div className="flex gap-3 w-full">
+                        <button onClick={onCancel} className="flex-1 py-2 px-4 rounded bg-slate-800 hover:bg-slate-700 text-slate-300 font-medium transition-colors">Cancel</button>
+                        <button onClick={onConfirm} disabled={isDeleting} className="flex-1 py-2 px-4 rounded bg-red-600 hover:bg-red-500 text-white font-medium transition-colors disabled:opacity-50 flex items-center justify-center gap-2">
+                            {isDeleting && <Loader2 size={16} className="animate-spin" />}
+                            {isDeleting ? 'Deleting...' : 'Delete'}
                         </button>
-
-                        <div className="flex flex-col items-center text-center">
-                            <div className="w-16 h-16 bg-emerald-500/10 rounded-full flex items-center justify-center mb-4 text-emerald-500">
-                                <CheckCircle size={32} />
-                            </div>
-                            <h3 className="text-xl font-bold text-white mb-2">Upload Successful!</h3>
-                            <p className="text-slate-400 text-sm mb-6">
-                                Your document has been uploaded and is being processed by our AI.
-                            </p>
-                            <button
-                                onClick={() => setSuccessModal(false)}
-                                className="w-full py-2.5 px-4 rounded bg-emerald-600 hover:bg-emerald-500 text-white font-medium transition-colors shadow-lg shadow-emerald-900/20"
-                            >
-                                Continue
-                            </button>
-                        </div>
                     </div>
                 </div>
-            )}
+            </div>
+        </div>
+    );
+}
 
-            {/* Error Modal */}
-            {errorModal.show && (
-                <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-in fade-in duration-200">
-                    <div className="bg-[#111827] border border-red-500/20 rounded-lg p-6 max-w-sm w-full shadow-2xl relative overflow-hidden">
-                        <div className="absolute top-0 left-0 w-1 h-full bg-red-500"></div>
-                        <button
-                            onClick={() => setErrorModal({ show: false, message: '' })}
-                            className="absolute top-4 right-4 text-slate-400 hover:text-white"
-                        >
-                            <X size={20} />
-                        </button>
-
-                        <div className="flex items-start gap-4 mb-4">
-                            <div className="bg-red-500/10 p-3 rounded-full text-red-500">
-                                <AlertTriangle size={24} />
-                            </div>
-                            <div>
-                                <h3 className="text-lg font-bold text-white mb-1">Upload Failed</h3>
-                                <p className="text-slate-400 text-sm leading-relaxed">{errorModal.message}</p>
-                            </div>
-                        </div>
-
-                        <div className="flex justify-end mt-6">
-                            <button
-                                onClick={() => setErrorModal({ show: false, message: '' })}
-                                className="px-4 py-2 text-sm rounded bg-slate-800 hover:bg-slate-700 text-white font-medium transition-colors"
-                            >
-                                Dismiss
-                            </button>
-                        </div>
+function SuccessModal({ show, onClose, title, message }: { show: boolean, onClose: () => void, title: string, message: string }) {
+    if (!show) return null;
+    return (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-in fade-in duration-200">
+            <div className="bg-[#111827] border border-emerald-500/20 rounded-lg p-6 max-w-sm w-full shadow-2xl relative overflow-hidden animate-in zoom-in-95 duration-200">
+                <div className="absolute top-0 left-0 w-1 h-full bg-emerald-500"></div>
+                <div className="flex flex-col items-center text-center">
+                    <div className="w-16 h-16 bg-emerald-500/10 rounded-full flex items-center justify-center mb-4 text-emerald-500">
+                        <CheckCircle size={32} />
                     </div>
+                    <h3 className="text-xl font-bold text-white mb-2">{title}</h3>
+                    <p className="text-slate-400 text-sm mb-6">{message}</p>
+                    <button
+                        onClick={onClose}
+                        className="w-full py-2.5 px-4 rounded bg-emerald-600 hover:bg-emerald-500 text-white font-medium transition-colors shadow-lg shadow-emerald-900/20"
+                    >
+                        OK
+                    </button>
                 </div>
-            )}
+            </div>
+        </div>
+    );
+}
 
-            {/* Delete Success Modal */}
-            {
-                deleteSuccessModal && (
-                    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-in fade-in duration-200">
-                        <div className="bg-[#111827] border border-emerald-500/20 rounded-lg p-6 max-w-sm w-full shadow-2xl relative overflow-hidden animate-in zoom-in-95 duration-200">
-                            <div className="absolute top-0 left-0 w-1 h-full bg-emerald-500"></div>
-                            <button
-                                onClick={() => setDeleteSuccessModal(false)}
-                                className="absolute top-4 right-4 text-slate-400 hover:text-white transition-colors"
-                            >
-                                <X size={20} />
-                            </button>
-
-                            <div className="flex flex-col items-center text-center">
-                                <div className="w-16 h-16 bg-emerald-500/10 rounded-full flex items-center justify-center mb-4 text-emerald-500">
-                                    <CheckCircle size={32} />
-                                </div>
-                                <h3 className="text-xl font-bold text-white mb-2">Deleted Successfully</h3>
-                                <p className="text-slate-400 text-sm mb-6">
-                                    The document has been permanently removed.
-                                </p>
-                                <button
-                                    onClick={() => setDeleteSuccessModal(false)}
-                                    className="w-full py-2.5 px-4 rounded bg-emerald-600 hover:bg-emerald-500 text-white font-medium transition-colors shadow-lg shadow-emerald-900/20"
-                                >
-                                    OK
-                                </button>
-                            </div>
-                        </div>
-                    </div>
-                )
-            }
-        </div >
+function ErrorModal({ show, message, onClose }: { show: boolean, message: string, onClose: () => void }) {
+    if (!show) return null;
+    return (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-in fade-in duration-200">
+            <div className="bg-[#111827] border border-red-500/30 rounded-lg p-6 max-w-sm w-full shadow-2xl">
+                <div className="flex flex-col items-center text-center">
+                    <div className="w-12 h-12 bg-red-500/10 rounded-full flex items-center justify-center mb-4 text-red-500"><AlertTriangle size={24} /></div>
+                    <h3 className="text-lg font-bold text-white mb-2">Error</h3>
+                    <p className="text-slate-400 text-sm mb-6">{message}</p>
+                    <button onClick={onClose} className="w-full py-2 px-4 rounded bg-slate-800 hover:bg-slate-700 text-white font-medium transition-colors">Close</button>
+                </div>
+            </div>
+        </div>
     );
 }
