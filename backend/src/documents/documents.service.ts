@@ -44,14 +44,14 @@ export class DocumentsService {
         const fileUrl = await this.uploadToSupabase(file);
         console.log(`[DocumentsService] Uploaded: ${fileUrl}`);
 
-        // 2. Ensure User exists (FK Constraint)
+        // 2. Ensure User exists (FK Constraint) - Wait for this to ensure consistency
         await this.prisma.user.upsert({
             where: { id: userId },
             update: { email },
             create: { id: userId, email },
         });
 
-        // 3. Create DB record
+        // 3. Create DB record INITIAL STATE
         const document = await this.prisma.document.create({
             data: {
                 title: file.originalname,
@@ -61,31 +61,45 @@ export class DocumentsService {
             },
         });
 
-        // 4. Process (OCR + AI)
+        // 4. Trigger Async Processing (Fire-and-Forget)
+        // We DO NOT await this. Node.js event loop will handle it.
+        this.processDocumentInBackground(document.id, file.buffer).catch(err => {
+            console.error(`[DocumentsService] Background processing failed for doc ${document.id}:`, err);
+        });
+
+        // 5. Return immediately to the user
+        return document;
+    }
+
+    // New helper for background processing
+    private async processDocumentInBackground(documentId: string, fileBuffer: Buffer) {
         try {
-            console.log(`[DocumentsService] Processing file from Buffer...`);
-            const text = await this.ocrService.extractText(file.buffer);
+            console.log(`[DocumentsService] Background processing started for ${documentId}...`);
+
+            console.log(`[DocumentsService] Extracting text...`);
+            const text = await this.ocrService.extractText(fileBuffer);
             console.log(`[DocumentsService] OCR extracted ${text.length} characters.`);
 
             console.log(`[DocumentsService] Generating summary...`);
             const summary = await this.aiService.generateSummary(text);
-            console.log(`[DocumentsService] Summary generated: ${summary.substring(0, 50)}...`);
+            console.log(`[DocumentsService] Summary generated.`);
 
-            return await this.prisma.document.update({
-                where: { id: document.id },
+            await this.prisma.document.update({
+                where: { id: documentId },
                 data: {
                     extractedText: text,
                     aiSummary: summary,
                     status: 'COMPLETED',
                 },
             });
+            console.log(`[DocumentsService] Document ${documentId} marked as COMPLETED.`);
         } catch (e) {
-            // Processing Failed: Mark document as failed so user knows.
+            console.error(`[DocumentsService] Error processing document ${documentId}:`, e);
+            // Mark as failed so user knows to try again
             await this.prisma.document.update({
-                where: { id: document.id },
+                where: { id: documentId },
                 data: { status: 'FAILED' },
             });
-            throw e;
         }
     }
 

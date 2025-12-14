@@ -21,6 +21,7 @@ interface Document {
     title: string;
     fileUrl: string;
     extractedText?: string;
+    status: string; // Added status property
     aiSummary?: string;
     chatMessages: Message[];
 }
@@ -72,12 +73,12 @@ export default function DocumentDetail() {
     };
 
     const fetchDocument = async (currentUserId: string) => {
-        console.log(`[DocumentDetail] Fetching document ${id} for user ${currentUserId}...`);
-        setLoading(true);
+        // console.log(`[DocumentDetail] Fetching document ${id} for user ${currentUserId}...`);
+        // Only set loading on initial fetch if we don't have data yet
+        if (!doc) setLoading(true);
         setError(null);
         try {
             const res = await fetch(`/api/documents/${id}?userId=${currentUserId}`);
-            console.log(`[DocumentDetail] Response status: ${res.status}`);
 
             if (!res.ok) {
                 const text = await res.text();
@@ -87,19 +88,36 @@ export default function DocumentDetail() {
             }
 
             const data = await res.json();
-            console.log('[DocumentDetail] Data received:', data);
+            // console.log('[DocumentDetail] Data received:', data);
 
             if (!data) throw new Error('Document data is empty');
 
             setDoc(data);
-            setMessages(data.chatMessages || []);
+            if (data.status === 'COMPLETED' || data.status === 'FAILED') {
+                setLoading(false);
+                setMessages(data.chatMessages || []);
+            } else if (data.status === 'PROCESSING') {
+                // Keep loading true effectively for the main UI, but we will show a custom "Processing View"
+                setLoading(false);
+            }
+
         } catch (e: any) {
             console.error('[DocumentDetail] Fetch Error:', e);
             setError(e.message || 'An unexpected error occurred while loading the document.');
-        } finally {
             setLoading(false);
         }
     };
+
+    // Polling Effect
+    useEffect(() => {
+        let interval: NodeJS.Timeout;
+        if (doc?.status === 'PROCESSING' && user) {
+            interval = setInterval(() => {
+                fetchDocument(user.id);
+            }, 3000); // Poll every 3 seconds
+        }
+        return () => clearInterval(interval);
+    }, [doc?.status, user]);
 
     const handleSend = async () => {
         if (!input.trim() || sending) return;
@@ -450,142 +468,178 @@ export default function DocumentDetail() {
                     {/* Main Content Area: Analysis & Chat */}
                     <div className="h-full flex flex-col bg-slate-900">
 
-                        {/* Content */}
-                        <div className="flex-1 overflow-y-auto custom-scrollbar p-6 space-y-6">
-
-                            {/* Extracted Data (Collapsible) */}
-                            <div className="bg-slate-800/50 border border-slate-700/50 rounded-xl overflow-hidden transition-all duration-300">
-                                <button
-                                    onClick={() => setExpandedData(!expandedData)}
-                                    className="w-full flex items-center justify-between px-5 py-3 bg-slate-800/80 hover:bg-slate-700/80 transition-colors border-b border-slate-700/50"
-                                >
-                                    <div className="flex items-center gap-2 text-xs uppercase tracking-wider text-slate-400 font-bold">
-                                        <FileTextIcon size={14} /> Extracted Data
+                        {/* PROCESSING STATE VIEW */}
+                        {doc?.status === 'PROCESSING' ? (
+                            <div className="flex-1 flex flex-col items-center justify-center p-8 text-center space-y-8 animate-in fade-in duration-500">
+                                <div className="relative">
+                                    <div className="absolute inset-0 bg-blue-500 blur-xl opacity-20 rounded-full animate-pulse"></div>
+                                    <div className="relative bg-slate-800 p-6 rounded-2xl border border-slate-700 shadow-2xl">
+                                        <Loader2 className="w-12 h-12 text-blue-500 animate-spin" />
                                     </div>
-                                    <div className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-[10px] font-bold uppercase tracking-wider transition-all ${expandedData ? 'bg-slate-700 text-slate-300 hover:bg-slate-600' : 'bg-blue-600 text-white shadow-lg shadow-blue-500/20 hover:bg-blue-500 hover:scale-105'}`}>
-                                        {expandedData ? (
-                                            <>
-                                                <span>Collapse</span>
-                                                <ChevronUp size={12} strokeWidth={3} />
-                                            </>
-                                        ) : (
-                                            <>
-                                                <span>Expand</span>
-                                                <ChevronDown size={12} strokeWidth={3} />
-                                            </>
-                                        )}
-                                    </div>
-                                </button>
+                                </div>
 
-                                <div className={`transition-all duration-300 ease-in-out ${expandedData ? 'max-h-[500px] opacity-100' : 'max-h-20 opacity-80'}`}>
-                                    <pre
-                                        onClick={() => !expandedData && setExpandedData(true)}
-                                        className={`text-xs text-slate-400 bg-slate-900 p-4 font-mono whitespace-pre-wrap overflow-y-auto custom-scrollbar border-none w-full cursor-pointer ${expandedData ? 'h-auto max-h-[400px]' : 'h-20 overflow-hidden relative'}`}
+                                <div className="max-w-md space-y-4">
+                                    <h2 className="text-2xl font-bold text-white">Analyzing Document...</h2>
+
+                                    <div className="space-y-3 text-left bg-slate-800/50 p-6 rounded-xl border border-slate-700/50">
+                                        <div className="flex items-center gap-3 text-emerald-400">
+                                            <CheckCircle size={18} />
+                                            <span className="text-sm font-medium">Upload Complete</span>
+                                        </div>
+                                        <div className="flex items-center gap-3 text-blue-400 animate-pulse">
+                                            <Loader2 size={18} className="animate-spin" />
+                                            <span className="text-sm font-medium">Extracting Text (OCR)</span>
+                                        </div>
+                                        <div className="flex items-center gap-3 text-slate-500">
+                                            <Bot size={18} />
+                                            <span className="text-sm font-medium">Generating AI Summary</span>
+                                        </div>
+                                    </div>
+
+                                    <p className="text-slate-500 text-xs italic pt-4">
+                                        Tip: The first time usually takes a bit longer as we warm up the AI engines.
+                                        You can continue to browse other documents while we finish here.
+                                    </p>
+                                </div>
+                            </div>
+                        ) : (
+                            /* Content */
+                            <div className="flex-1 overflow-y-auto custom-scrollbar p-6 space-y-6">
+
+                                {/* Extracted Data (Collapsible) */}
+                                <div className="bg-slate-800/50 border border-slate-700/50 rounded-xl overflow-hidden transition-all duration-300">
+                                    <button
+                                        onClick={() => setExpandedData(!expandedData)}
+                                        className="w-full flex items-center justify-between px-5 py-3 bg-slate-800/80 hover:bg-slate-700/80 transition-colors border-b border-slate-700/50"
                                     >
-                                        {!expandedData && (
-                                            <div className="absolute inset-0 bg-gradient-to-t from-slate-900 via-transparent to-transparent z-10 pointer-events-none" />
-                                        )}
-                                        {doc.extractedText || "Processing OCR..."}
-                                    </pre>
-                                </div>
-                            </div>
-
-                            {/* Summary Card */}
-                            <div className="bg-slate-800/50 border border-slate-700 rounded-xl overflow-hidden">
-                                <div className="px-5 py-3 border-b border-slate-700 bg-slate-800/80 flex items-center gap-2">
-                                    <Bot size={16} className="text-blue-400" />
-                                    <h2 className="text-sm font-bold text-slate-200 uppercase tracking-wider">AI Summary</h2>
-                                </div>
-                                <div className="p-5 text-slate-300 text-sm leading-relaxed">
-                                    {doc.aiSummary ? (
-                                        doc.aiSummary
-                                    ) : (
-                                        <div className="flex items-center gap-2 text-slate-500 italic">
-                                            <Loader2 size={14} className="animate-spin" />
-                                            Generating summary...
+                                        <div className="flex items-center gap-2 text-xs uppercase tracking-wider text-slate-400 font-bold">
+                                            <FileTextIcon size={14} /> Extracted Data
                                         </div>
-                                    )}
-                                </div>
-                            </div>
-
-                            {/* Chat History */}
-                            <div className="pt-6 border-t border-slate-800">
-                                <h3 className="text-sm font-semibold text-slate-200 mb-4">Chat History</h3>
-                                <div className="space-y-4">
-                                    {messages.length === 0 && (
-                                        <p className="text-center text-slate-600 text-sm py-8 bg-slate-800/30 rounded-xl border border-dashed border-slate-800">
-                                            Ask a question to start chatting with this document.
-                                        </p>
-                                    )}
-                                    {messages.map((m) => (
-                                        <div key={m.id} className={`flex gap-3 ${m.role === 'USER' ? 'flex-row-reverse' : ''}`}>
-                                            <div className={`w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0 border ${m.role === 'USER'
-                                                ? 'bg-blue-600 text-white border-blue-500'
-                                                : 'bg-emerald-600 text-white border-emerald-500'
-                                                }`}>
-                                                {m.role === 'USER' ? <User size={14} /> : <Bot size={14} />}
-                                            </div>
-                                            <div className={`max-w-[85%] p-3 rounded-2xl text-sm leading-relaxed overflow-hidden ${m.role === 'USER'
-                                                ? 'bg-blue-600 text-white rounded-tr-none shadow-lg shadow-blue-900/20'
-                                                : 'bg-slate-800 text-slate-200 rounded-tl-none border border-slate-700'
-                                                }`}>
-                                                <ReactMarkdown
-                                                    components={{
-                                                        // Override basic elements to fit chat style
-                                                        p: ({ children }) => <p className="mb-2 last:mb-0 whitespace-pre-wrap">{children}</p>,
-                                                        strong: ({ children }) => <strong className="font-bold text-white/90">{children}</strong>,
-                                                        ul: ({ children }) => <ul className="list-disc pl-4 mb-2 space-y-1">{children}</ul>,
-                                                        ol: ({ children }) => <ol className="list-decimal pl-4 mb-2 space-y-1">{children}</ol>,
-                                                        li: ({ children }) => <li>{children}</li>,
-                                                        a: ({ href, children }) => <a href={href} target="_blank" rel="noopener noreferrer" className="underline hover:text-blue-300">{children}</a>
-                                                    }}
-                                                >
-                                                    {m.content}
-                                                </ReactMarkdown>
-                                            </div>
+                                        <div className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-[10px] font-bold uppercase tracking-wider transition-all ${expandedData ? 'bg-slate-700 text-slate-300 hover:bg-slate-600' : 'bg-blue-600 text-white shadow-lg shadow-blue-500/20 hover:bg-blue-500 hover:scale-105'}`}>
+                                            {expandedData ? (
+                                                <>
+                                                    <span>Collapse</span>
+                                                    <ChevronUp size={12} strokeWidth={3} />
+                                                </>
+                                            ) : (
+                                                <>
+                                                    <span>Expand</span>
+                                                    <ChevronDown size={12} strokeWidth={3} />
+                                                </>
+                                            )}
                                         </div>
-                                    ))}
-                                    <div ref={messagesEndRef} />
-                                    {sending && (
-                                        <div className="flex gap-3 animate-pulse">
-                                            <div className="w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0 border bg-emerald-600 text-white border-emerald-500">
-                                                <Bot size={14} />
-                                            </div>
-                                            <div className="bg-slate-800 text-slate-400 p-3 rounded-2xl rounded-tl-none border border-slate-700 text-sm flex items-center gap-2">
+                                    </button>
+
+                                    <div className={`transition-all duration-300 ease-in-out ${expandedData ? 'max-h-[500px] opacity-100' : 'max-h-20 opacity-80'}`}>
+                                        <pre
+                                            onClick={() => !expandedData && setExpandedData(true)}
+                                            className={`text-xs text-slate-400 bg-slate-900 p-4 font-mono whitespace-pre-wrap overflow-y-auto custom-scrollbar border-none w-full cursor-pointer ${expandedData ? 'h-auto max-h-[400px]' : 'h-20 overflow-hidden relative'}`}
+                                        >
+                                            {!expandedData && (
+                                                <div className="absolute inset-0 bg-gradient-to-t from-slate-900 via-transparent to-transparent z-10 pointer-events-none" />
+                                            )}
+                                            {doc.extractedText || "Processing OCR..."}
+                                        </pre>
+                                    </div>
+                                </div>
+
+                                {/* Summary Card */}
+                                <div className="bg-slate-800/50 border border-slate-700 rounded-xl overflow-hidden">
+                                    <div className="px-5 py-3 border-b border-slate-700 bg-slate-800/80 flex items-center gap-2">
+                                        <Bot size={16} className="text-blue-400" />
+                                        <h2 className="text-sm font-bold text-slate-200 uppercase tracking-wider">AI Summary</h2>
+                                    </div>
+                                    <div className="p-5 text-slate-300 text-sm leading-relaxed">
+                                        {doc.aiSummary ? (
+                                            doc.aiSummary
+                                        ) : (
+                                            <div className="flex items-center gap-2 text-slate-500 italic">
                                                 <Loader2 size={14} className="animate-spin" />
-                                                <span className="italic">Thinking...</span>
+                                                Generating summary...
                                             </div>
-                                        </div>
-                                    )}
+                                        )}
+                                    </div>
                                 </div>
-                            </div>
-                        </div>
 
-                        {/* Chat Input */}
-                        <div className="p-4 border-t border-slate-700 bg-slate-800">
-                            <div className="relative flex items-center">
-                                <textarea
-                                    value={input}
-                                    onChange={(e) => setInput(e.target.value)}
-                                    onKeyDown={onKeyDown}
-                                    placeholder="Ask about this document..."
-                                    className={`w-full pl-5 pr-14 py-4 bg-slate-800 rounded-xl border text-slate-200 placeholder:text-slate-500 focus:bg-slate-800 focus:ring-1 transition resize-none text-sm shadow-inner ${input.length >= 1000 ? 'border-red-500 focus:border-red-500 focus:ring-red-500/50' : 'border-slate-700 focus:border-blue-500 focus:ring-blue-500/50'}`}
-                                    rows={1}
-                                    maxLength={1000}
-                                    disabled={sending}
-                                />
-                                <div className={`absolute bottom-2 right-14 text-[10px] font-bold px-2 py-0.5 rounded-full transition-colors ${input.length >= 900 ? 'text-red-400 bg-red-400/10' : 'text-slate-600'}`}>
-                                    {input.length}/1000
+                                {/* Chat History */}
+                                <div className="pt-6 border-t border-slate-800">
+                                    <h3 className="text-sm font-semibold text-slate-200 mb-4">Chat History</h3>
+                                    <div className="space-y-4">
+                                        {messages.length === 0 && (
+                                            <p className="text-center text-slate-600 text-sm py-8 bg-slate-800/30 rounded-xl border border-dashed border-slate-800">
+                                                Ask a question to start chatting with this document.
+                                            </p>
+                                        )}
+                                        {messages.map((m) => (
+                                            <div key={m.id} className={`flex gap-3 ${m.role === 'USER' ? 'flex-row-reverse' : ''}`}>
+                                                <div className={`w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0 border ${m.role === 'USER'
+                                                    ? 'bg-blue-600 text-white border-blue-500'
+                                                    : 'bg-emerald-600 text-white border-emerald-500'
+                                                    }`}>
+                                                    {m.role === 'USER' ? <User size={14} /> : <Bot size={14} />}
+                                                </div>
+                                                <div className={`max-w-[85%] p-3 rounded-2xl text-sm leading-relaxed overflow-hidden ${m.role === 'USER'
+                                                    ? 'bg-blue-600 text-white rounded-tr-none shadow-lg shadow-blue-900/20'
+                                                    : 'bg-slate-800 text-slate-200 rounded-tl-none border border-slate-700'
+                                                    }`}>
+                                                    <ReactMarkdown
+                                                        components={{
+                                                            // Override basic elements to fit chat style
+                                                            p: ({ children }) => <p className="mb-2 last:mb-0 whitespace-pre-wrap">{children}</p>,
+                                                            strong: ({ children }) => <strong className="font-bold text-white/90">{children}</strong>,
+                                                            ul: ({ children }) => <ul className="list-disc pl-4 mb-2 space-y-1">{children}</ul>,
+                                                            ol: ({ children }) => <ol className="list-decimal pl-4 mb-2 space-y-1">{children}</ol>,
+                                                            li: ({ children }) => <li>{children}</li>,
+                                                            a: ({ href, children }) => <a href={href} target="_blank" rel="noopener noreferrer" className="underline hover:text-blue-300">{children}</a>
+                                                        }}
+                                                    >
+                                                        {m.content}
+                                                    </ReactMarkdown>
+                                                </div>
+                                            </div>
+                                        ))}
+                                        <div ref={messagesEndRef} />
+                                        {sending && (
+                                            <div className="flex gap-3 animate-pulse">
+                                                <div className="w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0 border bg-emerald-600 text-white border-emerald-500">
+                                                    <Bot size={14} />
+                                                </div>
+                                                <div className="bg-slate-800 text-slate-400 p-3 rounded-2xl rounded-tl-none border border-slate-700 text-sm flex items-center gap-2">
+                                                    <Loader2 size={14} className="animate-spin" />
+                                                    <span className="italic">Thinking...</span>
+                                                </div>
+                                            </div>
+                                        )}
+                                    </div>
                                 </div>
-                                <button
-                                    onClick={handleSend}
-                                    disabled={!input.trim() || sending}
-                                    className="absolute right-3 top-1/2 -translate-y-1/2 p-2 bg-blue-600 text-white rounded-lg hover:bg-blue-500 disabled:opacity-50 disabled:cursor-not-allowed transition shadow-lg shadow-blue-600/20"
-                                >
-                                    {sending ? <Loader2 size={18} className="animate-spin" /> : <Send size={18} />}
-                                </button>
+                        )}
+                                {/* Chat Input */}
+                                <div className="p-4 border-t border-slate-700 bg-slate-800">
+                                    <div className="relative flex items-center">
+                                        <textarea
+                                            value={input}
+                                            onChange={(e) => setInput(e.target.value)}
+                                            onKeyDown={onKeyDown}
+                                            placeholder="Ask about this document..."
+                                            className={`w-full pl-5 pr-14 py-4 bg-slate-800 rounded-xl border text-slate-200 placeholder:text-slate-500 focus:bg-slate-800 focus:ring-1 transition resize-none text-sm shadow-inner ${input.length >= 1000 ? 'border-red-500 focus:border-red-500 focus:ring-red-500/50' : 'border-slate-700 focus:border-blue-500 focus:ring-blue-500/50'}`}
+                                            rows={1}
+                                            maxLength={1000}
+                                            disabled={sending}
+                                        />
+                                        <div className={`absolute bottom-2 right-14 text-[10px] font-bold px-2 py-0.5 rounded-full transition-colors ${input.length >= 900 ? 'text-red-400 bg-red-400/10' : 'text-slate-600'}`}>
+                                            {input.length}/1000
+                                        </div>
+                                        <button
+                                            onClick={handleSend}
+                                            disabled={!input.trim() || sending}
+                                            className="absolute right-3 top-1/2 -translate-y-1/2 p-2 bg-blue-600 text-white rounded-lg hover:bg-blue-500 disabled:opacity-50 disabled:cursor-not-allowed transition shadow-lg shadow-blue-600/20"
+                                        >
+                                            {sending ? <Loader2 size={18} className="animate-spin" /> : <Send size={18} />}
+                                        </button>
+                                    </div>
+                                </div>
                             </div>
-                        </div>
+                        )}
                     </div>
                 </div>
             </div>

@@ -313,6 +313,13 @@ export default function Home() {
                                         <span>Processed {new Date(doc.createdAt).toLocaleDateString()}</span>
                                     </div>
 
+                                    {doc.status === 'PROCESSING' && (
+                                        <div className="absolute top-6 right-6 flex items-center gap-1.5 bg-blue-500/10 text-blue-400 px-2 py-1 rounded text-xs font-semibold animate-pulse border border-blue-500/20">
+                                            <Loader2 size={12} className="animate-spin" />
+                                            processing
+                                        </div>
+                                    )}
+
                                     {doc.extractedText && (
                                         <p className="mt-auto text-sm text-slate-400 line-clamp-2 border-t border-slate-800 pt-4">
                                             {doc.extractedText}
