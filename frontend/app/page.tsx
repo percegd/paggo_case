@@ -21,7 +21,7 @@ export default function Home() {
     const [loadingDefaults, setLoadingDefaults] = useState(true);
 
     // Dashboard State (Global Docs Context)
-    const { docs, loading: loadingDocs, fetchDocuments, removeDocument } = useDocuments();
+    const { docs, loading: loadingDocs, fetchDocuments, removeDocument, addDocument } = useDocuments();
     const [uploading, setUploading] = useState(false);
     const [processing, setProcessing] = useState(false);
     const [isDeleting, setIsDeleting] = useState(false); // New state for delete loading
@@ -42,7 +42,7 @@ export default function Home() {
             setUser(session?.user ?? null);
             if (session?.user) {
                 await syncUser(session.user);
-                fetchDocuments(session.user.id, true);
+                fetchDocuments(session.user.id);
             }
         });
 
@@ -116,7 +116,7 @@ export default function Home() {
         if (user.email) formData.append('email', user.email);
 
         try {
-            await axios.post(`/api/documents/upload`, formData, {
+            const res = await axios.post(`/api/documents/upload`, formData, {
                 headers: {
                     'Content-Type': 'multipart/form-data',
                 },
@@ -129,7 +129,9 @@ export default function Home() {
                 }
             });
 
-            await fetchDocuments(user.id, true); // Force refresh after upload
+            if (res.data) {
+                addDocument(res.data);
+            }
             setSuccessModal(true);
         } catch (err) {
             console.error('Upload failed', err);
