@@ -15,7 +15,8 @@ interface DocumentDetailViewProps {
 }
 
 export default function DocumentDetailView({ docId, onBack }: DocumentDetailViewProps) {
-    const { getDocumentDetails, removeDocument, docs } = useDocuments();
+    // Dashboard State
+    const { getDocumentDetails, removeDocument, docs, updateDocumentState } = useDocuments();
 
     // 1. Try to initialize from Context Cache immediately
     const cachedDoc = docs.find(d => d.id === docId);
@@ -25,6 +26,7 @@ export default function DocumentDetailView({ docId, onBack }: DocumentDetailView
 
     // 2. Only show full loading if we have absolutely nothing
     const [loading, setLoading] = useState(!cachedDoc);
+    const [chatLoading, setChatLoading] = useState(false);
 
     // 3. Local state
     const [input, setInput] = useState('');
@@ -58,6 +60,9 @@ export default function DocumentDetailView({ docId, onBack }: DocumentDetailView
             // If we have basic data (title), we stay interactive and just fill in details.
             if (!doc) setLoading(true);
 
+            // If we are fetching details, we are loading chat
+            setChatLoading(true);
+
             const detailedDoc = await getDocumentDetails(docId, userId);
 
             if (detailedDoc) {
@@ -70,6 +75,7 @@ export default function DocumentDetailView({ docId, onBack }: DocumentDetailView
             setError("Failed to load document.");
         } finally {
             setLoading(false);
+            setChatLoading(false);
         }
     };
 
@@ -128,7 +134,8 @@ export default function DocumentDetailView({ docId, onBack }: DocumentDetailView
             content: input.trim(),
             createdAt: new Date().toISOString()
         };
-        setMessages(prev => [...prev, newUserMsg]);
+        const updatedMessagesAfterUser = [...messages, newUserMsg];
+        setMessages(updatedMessagesAfterUser);
         setInput('');
 
         try {
@@ -156,7 +163,15 @@ export default function DocumentDetailView({ docId, onBack }: DocumentDetailView
                 content: data.content, // Fixed: Backend returns 'content', not 'reply'
                 createdAt: new Date().toISOString()
             };
-            setMessages(prev => [...prev, newAiMsg]);
+            const finalMessages = [...updatedMessagesAfterUser, newAiMsg];
+            setMessages(finalMessages);
+
+            // Persist to global context so it survives view toggle
+            if (doc) {
+                updateDocumentState(doc.id, {
+                    chatMessages: finalMessages
+                });
+            }
         } catch (error) {
             console.error(error);
             setMessages(prev => [...prev, {
@@ -288,17 +303,85 @@ export default function DocumentDetailView({ docId, onBack }: DocumentDetailView
             const pageWidth = pdf.internal.pageSize.getWidth();
             let yPos = 20;
 
-            // --- HEADER ---
-            pdf.setFontSize(24);
-            pdf.setTextColor(37, 99, 235);
-            pdf.text('Paggo.ai', 20, yPos);
-            pdf.setFontSize(10);
-            pdf.setTextColor(100, 100, 100);
-            pdf.text(`Generated Report | ${new Date().toLocaleDateString()}`, pageWidth - 20, yPos, { align: 'right' });
-            yPos += 15;
-            pdf.setDrawColor(200, 200, 200);
-            pdf.line(20, yPos, pageWidth - 20, yPos);
-            yPos += 20;
+            const isImage = doc.fileUrl && /\.(jpg|jpeg|png|webp)$/i.test(doc.fileUrl);
+            const isPdf = doc.fileUrl && /\.pdf$/i.test(doc.fileUrl);
+
+            // --- IF IMAGE, DRAW IT FIRST ---
+            if (isImage) {
+                // Header for Image Page? Or just Image?
+                // Let's put Header
+                pdf.setFontSize(24);
+                pdf.setTextColor(37, 99, 235);
+                pdf.text('Paggo.ai', 20, yPos);
+                pdf.setFontSize(10);
+                pdf.setTextColor(100, 100, 100);
+                pdf.text(`Generated Report | ${new Date().toLocaleDateString()}`, pageWidth - 20, yPos, { align: 'right' });
+                yPos += 15;
+                pdf.setDrawColor(200, 200, 200);
+                pdf.line(20, yPos, pageWidth - 20, yPos);
+                yPos += 20;
+
+                pdf.setFontSize(12);
+                pdf.setTextColor(60, 60, 60);
+                pdf.setFont("helvetica", "bold");
+                pdf.text('Original Document:', 20, yPos);
+                yPos += 10;
+                try {
+                    const response = await fetch(doc.fileUrl);
+                    const blob = await response.blob();
+                    const base64 = await new Promise<string>((resolve) => {
+                        const reader = new FileReader();
+                        reader.onloadend = () => resolve(reader.result as string);
+                        reader.readAsDataURL(blob);
+                    });
+                    const imgProps = pdf.getImageProperties(base64);
+                    const maxWidth = pageWidth - 40;
+                    const maxHeight = 200;
+                    let w = imgProps.width;
+                    let h = imgProps.height;
+
+                    // Fit logic
+                    if (w > maxWidth) {
+                        const ratio = maxWidth / w;
+                        w = maxWidth;
+                        h = h * ratio;
+                    }
+                    if (h > maxHeight) {
+                        const ratio = maxHeight / h;
+                        h = maxHeight;
+                        w = w * ratio;
+                    }
+
+                    pdf.addImage(base64, 'JPEG', 20, yPos, w, h);
+
+                    // Move to next page for Summary/Chat
+                    pdf.addPage();
+                    yPos = 20;
+                } catch (e) {
+                    // ignore
+                }
+            }
+
+            // --- HEADER (Repeated if Image was first page? Or just header for report page) ---
+            if (isImage) {
+                // We added a page, so reset yPos and header
+                // We can skip header on 2nd page or repeat
+                // Let's repeat small header? or just start with Title
+            }
+
+            if (!isImage) {
+                // If PDF/Text, we start with Header
+                pdf.setFontSize(24);
+                pdf.setTextColor(37, 99, 235);
+                pdf.text('Paggo.ai', 20, yPos);
+                pdf.setFontSize(10);
+                pdf.setTextColor(100, 100, 100);
+                pdf.text(`Generated Report | ${new Date().toLocaleDateString()}`, pageWidth - 20, yPos, { align: 'right' });
+                yPos += 15;
+                pdf.setDrawColor(200, 200, 200);
+                pdf.line(20, yPos, pageWidth - 20, yPos);
+                yPos += 20;
+            }
 
             // --- INFO & SUMMARY ---
             pdf.setFontSize(18);
@@ -338,131 +421,108 @@ export default function DocumentDetailView({ docId, onBack }: DocumentDetailView
                 yPos += splitText.length * 4 + 20;
             }
 
-            // --- IMAGE EMBEDDING (If Image) ---
-            const isImage = doc.fileUrl && /\.(jpg|jpeg|png|webp)$/i.test(doc.fileUrl);
-            const isPdf = doc.fileUrl && /\.pdf$/i.test(doc.fileUrl);
-
-            if (isImage) {
-                if (yPos > 200) { pdf.addPage(); yPos = 20; }
-                pdf.setFontSize(12);
-                pdf.setTextColor(60, 60, 60);
-                pdf.setFont("helvetica", "bold");
-                pdf.text('Original Document:', 20, yPos);
-                yPos += 10;
-                try {
-                    const response = await fetch(doc.fileUrl);
-                    const blob = await response.blob();
-                    const base64 = await new Promise<string>((resolve) => {
-                        const reader = new FileReader();
-                        reader.onloadend = () => resolve(reader.result as string);
-                        reader.readAsDataURL(blob);
-                    });
-                    const imgProps = pdf.getImageProperties(base64);
-                    const maxWidth = pageWidth - 40;
-                    const maxHeight = 200;
-                    let w = imgProps.width;
-                    let h = imgProps.height;
-                    if (w > maxWidth) { h = (maxWidth / w) * h; w = maxWidth; }
-                    if (h > maxHeight) { w = (maxHeight / h) * w; h = maxHeight; }
-                    pdf.addImage(base64, 'JPEG', 20, yPos, w, h);
-                    yPos += h + 20;
-                } catch (e) {
-                    // ignore
-                }
-            }
-
             // --- CHAT HISTORY ---
-            if (messages && messages.length > 0) {
-                pdf.addPage();
-                yPos = 20;
+            // ALWAYS SHOW, even if empty
+            if (true) {
+                if (yPos > 200) { pdf.addPage(); yPos = 20; }
+                else { yPos += 10; } // gap
+
                 pdf.setFont("helvetica", "bold");
                 pdf.setFontSize(14);
                 pdf.setTextColor(0, 0, 0);
                 pdf.text('Chat History', 20, yPos);
                 yPos += 20;
 
-                const userX = pageWidth - 20;
-                const aiX = 20;
-                const maxWidth = (pageWidth / 2) + 20;
-                const pageHeight = pdf.internal.pageSize.getHeight();
-                const bottomMargin = 20;
-                const lineHeight = 5;
-
-                for (const msg of messages) {
-                    const isAI = msg.role === 'AI';
-                    const content = msg.content.replace(/\*\*/g, '');
+                if (!messages || messages.length === 0) {
+                    pdf.setFont("helvetica", "italic");
                     pdf.setFontSize(10);
-                    pdf.setFont("helvetica", "normal");
+                    pdf.setTextColor(150, 150, 150);
+                    pdf.text("(No messages in history)", 20, yPos);
+                    yPos += 20;
+                } else {
+                    const userX = pageWidth - 20;
+                    const aiX = 20;
+                    const maxWidth = (pageWidth / 2) + 20;
+                    const pageHeight = pdf.internal.pageSize.getHeight();
+                    const bottomMargin = 20;
+                    const lineHeight = 5;
 
-                    // Split text into lines that fit the width
-                    const splitMsg = pdf.splitTextToSize(content, maxWidth - 35);
+                    for (const msg of messages) {
+                        const isAI = msg.role === 'AI';
+                        const content = msg.content.replace(/\*\*/g, '');
+                        pdf.setFontSize(10);
+                        pdf.setFont("helvetica", "normal");
 
-                    let linesProcessed = 0;
+                        // Split text into lines that fit the width
+                        const splitMsg = pdf.splitTextToSize(content, maxWidth - 35);
 
-                    while (linesProcessed < splitMsg.length) {
-                        const remainingLines = splitMsg.length - linesProcessed;
+                        let linesProcessed = 0;
 
-                        // Calculate space available on current page
-                        const spaceAvailable = pageHeight - bottomMargin - yPos;
+                        while (linesProcessed < splitMsg.length) {
+                            const remainingLines = splitMsg.length - linesProcessed;
 
-                        // Calculate how many lines can fit in this space (minus padding)
-                        // Bubble padding is roughly 12 units (6 top, 6 bottom)
-                        // So text space is spaceAvailable - 12
-                        const maxLinesFit = Math.floor((spaceAvailable - 16) / lineHeight);
+                            // Calculate space available on current page
+                            const spaceAvailable = pageHeight - bottomMargin - yPos;
 
-                        if (maxLinesFit <= 0) {
-                            // Does not fit at all, move to next page
-                            pdf.addPage();
-                            yPos = 20;
-                            continue; // Retry loop with new page
-                        }
+                            // Calculate how many lines can fit in this space (minus padding)
+                            // Bubble padding is roughly 12 units (6 top, 6 bottom)
+                            // So text space is spaceAvailable - 12
+                            const maxLinesFit = Math.floor((spaceAvailable - 16) / lineHeight);
 
-                        // Determine how many lines to take for this chunk
-                        const linesToTake = Math.min(remainingLines, maxLinesFit);
-                        const chunk = splitMsg.slice(linesProcessed, linesProcessed + linesToTake);
-
-                        const bubbleH = (chunk.length * lineHeight) + 12;
-
-                        if (isAI) {
-                            // AI Bubble
-                            pdf.setFillColor(241, 245, 249);
-                            pdf.roundedRect(aiX + 15, yPos, maxWidth - 15, bubbleH, 3, 3, 'F');
-
-                            // Draw Bot Icon
-                            if (linesProcessed === 0) {
-                                drawLucideBotIcon(pdf, aiX + 2, yPos + 6, 8); // x, y, size
+                            if (maxLinesFit <= 0) {
+                                // Does not fit at all, move to next page
+                                pdf.addPage();
+                                yPos = 20;
+                                continue; // Retry loop with new page
                             }
 
-                            pdf.setFontSize(10);
-                            pdf.setFont("helvetica", "normal");
-                            pdf.setTextColor(15, 23, 42);
-                            pdf.text(chunk, aiX + 20, yPos + 8);
-                        } else {
-                            // User Bubble
-                            const bubbleX = userX - (maxWidth - 15);
-                            pdf.setFillColor(219, 234, 254);
-                            pdf.roundedRect(bubbleX, yPos, maxWidth - 15, bubbleH, 3, 3, 'F');
+                            // Determine how many lines to take for this chunk
+                            const linesToTake = Math.min(remainingLines, maxLinesFit);
+                            const chunk = splitMsg.slice(linesProcessed, linesProcessed + linesToTake);
 
-                            // Draw User Icon
-                            if (linesProcessed === 0) {
-                                drawLucideUserIcon(pdf, userX - 10, yPos + 6, 8); // x, y, size
+                            const bubbleH = (chunk.length * lineHeight) + 12;
+
+                            if (isAI) {
+                                // AI Bubble
+                                pdf.setFillColor(241, 245, 249);
+                                pdf.roundedRect(aiX + 15, yPos, maxWidth - 15, bubbleH, 3, 3, 'F');
+
+                                // Draw Bot Icon
+                                if (linesProcessed === 0) {
+                                    drawLucideBotIcon(pdf, aiX + 2, yPos + 6, 8); // x, y, size
+                                }
+
+                                pdf.setFontSize(10);
+                                pdf.setFont("helvetica", "normal");
+                                pdf.setTextColor(15, 23, 42);
+                                pdf.text(chunk, aiX + 20, yPos + 8);
+                            } else {
+                                // User Bubble
+                                const bubbleX = userX - (maxWidth - 15);
+                                pdf.setFillColor(219, 234, 254);
+                                pdf.roundedRect(bubbleX, yPos, maxWidth - 15, bubbleH, 3, 3, 'F');
+
+                                // Draw User Icon
+                                if (linesProcessed === 0) {
+                                    drawLucideUserIcon(pdf, userX - 10, yPos + 6, 8); // x, y, size
+                                }
+
+                                pdf.setFontSize(10);
+                                pdf.setFont("helvetica", "normal");
+                                pdf.setTextColor(30, 58, 138);
+                                pdf.text(chunk, bubbleX + 5, yPos + 8);
                             }
 
-                            pdf.setFontSize(10);
-                            pdf.setFont("helvetica", "normal");
-                            pdf.setTextColor(30, 58, 138);
-                            pdf.text(chunk, bubbleX + 5, yPos + 8);
-                        }
+                            yPos += bubbleH + 5; // Gap between chunks/messages
+                            linesProcessed += linesToTake;
 
-                        yPos += bubbleH + 5; // Gap between chunks/messages
-                        linesProcessed += linesToTake;
-
-                        // If we finished the message but are very close to bottom, add extra padding or just let next message handle it
-                        if (linesProcessed < splitMsg.length) {
-                            // If we have more lines to print, we naturally loop back and hit the "maxLinesFit <= 0" check -> addPage
+                            // If we finished the message but are very close to bottom, add extra padding or just let next message handle it
+                            if (linesProcessed < splitMsg.length) {
+                                // If we have more lines to print, we naturally loop back and hit the "maxLinesFit <= 0" check -> addPage
+                            }
                         }
+                        yPos += 5; // Extra gap between distinct messages
                     }
-                    yPos += 5; // Extra gap between distinct messages
                 }
             }
 
@@ -585,7 +645,7 @@ export default function DocumentDetailView({ docId, onBack }: DocumentDetailView
                         )}
                         <button
                             onClick={handleDownload}
-                            disabled={downloading || doc.status === 'PROCESSING' || doc.status === 'FAILED'}
+                            disabled={downloading || doc.status === 'PROCESSING' || doc.status === 'FAILED' || chatLoading}
                             className="flex items-center gap-2 bg-blue-600 hover:bg-blue-500 text-white px-4 py-2 rounded-lg font-medium transition-colors shadow-lg shadow-blue-900/20 disabled:opacity-50 disabled:cursor-not-allowed"
                             title="Download Report"
                         >
@@ -664,22 +724,34 @@ export default function DocumentDetailView({ docId, onBack }: DocumentDetailView
                             <div className="relative">
                                 <div className="absolute left-4 top-0 bottom-0 w-px bg-slate-800"></div>
                                 <div className="space-y-6">
-                                    {messages.map((msg) => (
-                                        <div key={msg.id} className={`flex gap-4 ${msg.role === 'USER' ? 'flex-row-reverse' : ''}`}>
-                                            <div className={`w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0 border ${msg.role === 'AI' ? 'bg-indigo-600 text-white border-indigo-500' : 'bg-slate-700 text-slate-300 border-slate-600'
-                                                }`}>
-                                                {msg.role === 'AI' ? <Bot size={14} /> : <User size={14} />}
-                                            </div>
-                                            <div className={`max-w-[80%] p-4 rounded-2xl text-sm leading-relaxed shadow-sm ${msg.role === 'AI' ? 'bg-slate-800 text-slate-200 rounded-tl-none border border-slate-700' : 'bg-blue-600 text-white rounded-tr-none'
-                                                }`}>
-                                                <ReactMarkdown>{msg.content}</ReactMarkdown>
-                                                <div className={`text-[10px] mt-2 opacity-50 ${msg.role === 'USER' ? 'text-blue-200' : 'text-slate-500'}`}>
-                                                    {new Date(msg.createdAt).toLocaleTimeString()}
-                                                </div>
-                                            </div>
+
+                                    {/* Loading State Overlay or Block */}
+                                    {chatLoading && messages.length === 0 ? (
+                                        <div className="flex flex-col items-center justify-center py-20 animate-in fade-in duration-300">
+                                            <Loader2 size={48} className="text-blue-500 animate-spin mb-4" />
+                                            <h3 className="text-xl font-bold text-white tracking-tight">Loading Chat...</h3>
                                         </div>
-                                    ))}
-                                    <div ref={messagesEndRef} />
+                                    ) : (
+                                        <>
+                                            {messages.map((msg) => (
+                                                <div key={msg.id} className={`flex gap-4 ${msg.role === 'USER' ? 'flex-row-reverse' : ''}`}>
+                                                    <div className={`w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0 border ${msg.role === 'AI' ? 'bg-indigo-600 text-white border-indigo-500' : 'bg-slate-700 text-slate-300 border-slate-600'
+                                                        }`}>
+                                                        {msg.role === 'AI' ? <Bot size={14} /> : <User size={14} />}
+                                                    </div>
+                                                    <div className={`max-w-[80%] p-4 rounded-2xl text-sm leading-relaxed shadow-sm ${msg.role === 'AI' ? 'bg-slate-800 text-slate-200 rounded-tl-none border border-slate-700' : 'bg-blue-600 text-white rounded-tr-none'
+                                                        }`}>
+                                                        <ReactMarkdown>{msg.content}</ReactMarkdown>
+                                                        <div className={`text-[10px] mt-2 opacity-50 ${msg.role === 'USER' ? 'text-blue-200' : 'text-slate-500'}`}>
+                                                            {new Date(msg.createdAt).toLocaleTimeString()}
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            ))}
+                                            <div ref={messagesEndRef} />
+                                        </>
+                                    )}
+
                                     {sending && (
                                         <div className="flex gap-3 animate-pulse">
                                             <div className="w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0 border bg-indigo-600 text-white border-indigo-500">
@@ -694,45 +766,45 @@ export default function DocumentDetailView({ docId, onBack }: DocumentDetailView
                                 </div>
                             </div>
                         </div>
-
-                        {/* Chat Input */}
-                        {doc.status !== 'PROCESSING' && (
-                            <div className="p-4 border-t border-slate-700 bg-slate-800">
-                                <div className="relative flex items-center">
-                                    <textarea
-                                        value={input}
-                                        onChange={(e) => setInput(e.target.value)}
-                                        onKeyDown={(e) => {
-                                            if (e.key === 'Enter' && !e.shiftKey) {
-                                                e.preventDefault();
-                                                handleSend();
-                                            }
-                                        }}
-                                        placeholder="Ask a question about this document..."
-                                        className={`w-full pl-5 pr-14 py-4 bg-slate-800 rounded-xl border text-slate-200 placeholder:text-slate-500 focus:bg-slate-800 focus:ring-1 transition resize-none text-sm shadow-inner ${input.length >= 1000 ? 'border-red-500 focus:border-red-500 focus:ring-red-500/50' : 'border-slate-700 focus:border-blue-500 focus:ring-blue-500/50'}`}
-                                        rows={1}
-                                        maxLength={1000}
-                                        disabled={sending}
-                                    />
-                                    <div className={`absolute bottom-2 right-14 text-[10px] font-bold px-2 py-0.5 rounded-full transition-colors ${input.length >= 900 ? 'text-red-400 bg-red-400/10' : 'text-slate-600'}`}>
-                                        {input.length}/1000
-                                    </div>
-                                    <button
-                                        onClick={handleSend}
-                                        disabled={!input.trim() || sending}
-                                        className="absolute right-3 top-1/2 -translate-y-1/2 p-2 bg-blue-600 text-white rounded-lg hover:bg-blue-500 disabled:opacity-50 disabled:cursor-not-allowed transition shadow-lg shadow-blue-600/20"
-                                    >
-                                        {sending ? <Loader2 size={18} className="animate-spin" /> : <Send size={18} />}
-                                    </button>
-                                </div>
-                            </div>
-                        )}
                     </>
+                )}
+                {/* Chat Input */}
+                {doc.status !== 'PROCESSING' && (
+                    <div className="p-4 border-t border-slate-700 bg-slate-800">
+                        <div className="relative flex items-center">
+                            <textarea
+                                value={input}
+                                onChange={(e) => setInput(e.target.value)}
+                                onKeyDown={(e) => {
+                                    if (e.key === 'Enter' && !e.shiftKey) {
+                                        e.preventDefault();
+                                        handleSend();
+                                    }
+                                }}
+                                placeholder="Ask a question about this document..."
+                                className={`w-full pl-5 pr-14 py-4 bg-slate-800 rounded-xl border text-slate-200 placeholder:text-slate-500 focus:bg-slate-800 focus:ring-1 transition resize-none text-sm shadow-inner ${input.length >= 1000 ? 'border-red-500 focus:border-red-500 focus:ring-red-500/50' : 'border-slate-700 focus:border-blue-500 focus:ring-blue-500/50'}`}
+                                rows={1}
+                                maxLength={1000}
+                                disabled={sending}
+                            />
+                            <div className={`absolute bottom-2 right-14 text-[10px] font-bold px-2 py-0.5 rounded-full transition-colors ${input.length >= 900 ? 'text-red-400 bg-red-400/10' : 'text-slate-600'}`}>
+                                {input.length}/1000
+                            </div>
+                            <button
+                                onClick={handleSend}
+                                disabled={!input.trim() || sending}
+                                className="absolute right-3 top-1/2 -translate-y-1/2 p-2 bg-blue-600 text-white rounded-lg hover:bg-blue-500 disabled:opacity-50 disabled:cursor-not-allowed transition shadow-lg shadow-blue-600/20"
+                            >
+                                {sending ? <Loader2 size={18} className="animate-spin" /> : <Send size={18} />}
+                            </button>
+                        </div>
+                    </div>
                 )}
             </div>
 
             {/* Modals */}
             <RateLimitModal show={showRateLimitModal} onClose={() => setShowRateLimitModal(false)} />
+
             {/* Delete Modal */}
             {showDeleteModal && (
                 <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-in fade-in duration-200">
@@ -751,6 +823,7 @@ export default function DocumentDetailView({ docId, onBack }: DocumentDetailView
                     </div>
                 </div>
             )}
+
             {/* Success Modal */}
             {showSuccessModal && (
                 <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-in fade-in duration-200">

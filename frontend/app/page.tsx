@@ -354,12 +354,7 @@ export default function Home() {
                                     </div>
 
                                     {/* Processing Badge on Card (Optional, for extra visibility) */}
-                                    {doc.status === 'PROCESSING' && (
-                                        <div className="absolute bottom-6 right-6 flex items-center gap-1.5 bg-blue-500/10 text-blue-400 px-2 py-1 rounded text-xs font-semibold animate-pulse border border-blue-500/20 pointer-events-none">
-                                            <Loader2 size={12} className="animate-spin" />
-                                            processing
-                                        </div>
-                                    )}
+
                                 </div>
                             </div>
                         ))}

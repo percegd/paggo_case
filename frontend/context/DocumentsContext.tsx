@@ -29,6 +29,7 @@ interface DocumentsContextType {
     addDocument: (doc: Document) => void;
     removeDocument: (docId: string) => void;
     getDocumentDetails: (docId: string, userId: string) => Promise<Document | null>;
+    updateDocumentState: (docId: string, updates: Partial<Document>) => void;
 }
 
 const DocumentsContext = createContext<DocumentsContextType | undefined>(undefined);
@@ -115,12 +116,16 @@ export function DocumentsProvider({ children }: { children: ReactNode }) {
         setDocs(prev => [doc, ...prev]);
     }, []);
 
+    const updateDocumentState = useCallback((docId: string, updates: Partial<Document>) => {
+        setDocs(prev => prev.map(d => d.id === docId ? { ...d, ...updates } : d));
+    }, []);
+
     const removeDocument = useCallback((docId: string) => {
         setDocs(prev => prev.filter(d => d.id !== docId));
     }, []);
 
     return (
-        <DocumentsContext.Provider value={{ docs, loading, error, fetchDocuments, addDocument, removeDocument, getDocumentDetails }}>
+        <DocumentsContext.Provider value={{ docs, loading, error, fetchDocuments, addDocument, removeDocument, getDocumentDetails, updateDocumentState }}>
             {children}
         </DocumentsContext.Provider>
     );
