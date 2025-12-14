@@ -49,6 +49,20 @@ export default function Home() {
         return () => subscription.unsubscribe();
     }, []);
 
+    // Smart Polling: Refresh Documents if any are processing
+    useEffect(() => {
+        const hasProcessing = docs.some(d => d.status === 'PROCESSING');
+        let interval: NodeJS.Timeout;
+
+        if (hasProcessing && user) {
+            interval = setInterval(() => {
+                fetchDocuments(user.id);
+            }, 5000); // Poll every 5 seconds
+        }
+
+        return () => clearInterval(interval);
+    }, [docs, user]); // Re-run when docs change (to check if still processing) or user changes
+
     const checkUser = async () => {
         const { data: { session } } = await supabase.auth.getSession();
         if (session?.user) {
@@ -314,7 +328,7 @@ export default function Home() {
                                     </div>
 
                                     {doc.status === 'PROCESSING' && (
-                                        <div className="absolute top-6 right-6 flex items-center gap-1.5 bg-blue-500/10 text-blue-400 px-2 py-1 rounded text-xs font-semibold animate-pulse border border-blue-500/20">
+                                        <div className="absolute top-6 right-6 flex items-center gap-1.5 bg-blue-500/10 text-blue-400 px-2 py-1 rounded text-xs font-semibold animate-pulse border border-blue-500/20 pointer-events-none">
                                             <Loader2 size={12} className="animate-spin" />
                                             processing
                                         </div>

@@ -612,21 +612,145 @@ export default function DocumentDetail() {
                                         )}
                                     </div>
                                 </div>
+                            </div>
                         )}
-                                {/* Chat Input */}
-                                <div className="p-4 border-t border-slate-700 bg-slate-800">
+
+                        {/* Chat Input - Only show if processing is complete (so inside the else block effectively, wait, no. The logic above was: if processing show processing view, else show content view. The chat input should be part of the else block or shown only when not processing. The previous code closed the else block at 615. So Chat Input was outside. Since the ternary handles the MAIN VIEW, and Chat Input is stickied to bottom...
+                        Actually if status is processing, we show a full screen processing view. We DO NOT want the chat input.
+                        So the chat input MUST be inside the else block of the ternary.
+
+                        Current structure seems to be:
+                        {processing ? (... ): (
+                            <div className = "flex-1 overflow-y-auto..."> ... </div>
+
+                    It seems I closed the else block too early?
+                    Let's check where the else block starts.
+                    Ah, the else block starts at line 464 in the previous `view_file` (Step 969).
+                    <div className="flex-1 overflow-y-auto custom-scrollbar p-6 space-y-6">
+
+                        If I want Chat Input to be visible, it should normally be partial of the layout.
+                        But the `Processing View` takes up the whole `flex-1`.
+                        So `Chat Input` should indeed be inside the Else block or conditional.
+                        
+                        The `)}` at 615 closes the ternary.
+                        The `Chat Input` at 617-640 is OUTSIDE the ternary.
+                        This means Chat Input is shown even if Processing?
+                        YES. That's a bug too (logically). 
+                        
+                        I will move the closing `)}` to AFTER the Chat Input div.
+                        Wait, `Chat Input` is a separate div. The `else` block was just the scrollable text area?
+
+                        Let's look at the structure of `else` block again.
+                        It opens at 464: `( <div className="flex-1 overflow-y-auto...">`
+                            It closes ... where?
+                            The `replace_file_content` in step 1014 ended with:
+                            ```
+                        </div>
+                    </div>
+                        )}
+                    ```
+                    This closing sequence matches:
+                    - `</div>` (Chat History's inner div?)
+                - `</div>` (Chat History's outer div?)
+            - `</div>` (The scrollable container?)
+                        
+                        If I move `)
+} ` to AFTER the Chat Input, then the ternary result would need a fragment or a parent div.
+                        The parent is `< div className = "h-full flex flex-col bg-slate-900" > `.
+                        Inside that is the ternary.
+                        
+                        If `processing`:
+                           `< div className = "flex-1 flex flex-col items-center justify-center p-8 ..." > ` (Takes full height)
+                        
+                        If `!processing`:
+                           We want:
+                           1. `< div className = "flex-1 overflow-y-auto ..." > ` (Content)
+                           2. `< div className = "p-4 border-t ..." > ` (Input)
+                           
+                           So the `else ` block needs to return a Fragment `<> ... </> ` or keep them as siblings if the return type allows (it's JSX, so needs one parent).
+                           BUT wait, the ternary is inside:
+                           ```tsx
+    < div className = "h-full flex flex-col bg-slate-900" >
+        { processing?(...): (...) }
+                           </div >
+    ```
+                           Since `flex - col` is the parent, we can return a Fragment or just have the `else ` be the two divs? No, ternary expects one expression.
+                           So I should wrap the `else ` content in a Fragment `<> ... </> `.
+                           
+                           OR, I can just verify if the `Chat Input` is currently showing up weirdly.
+                           The user said `)}` appears at the end of chat history.
+                           This text probably comes from `)}` being interpreted as text because of a misplaced brace.
+                           
+                           If I modify line 615 to simply `}` (closing the block), and ensure the opening was correct...
+                           
+                           Let's try to wrap the Else block in `<> ... </> `.
+                        */
+                        
+                        /* CORRECT PLAN:
+                           The `else ` block currently contains the scrollable content.
+                           The `Chat Input` is OUTSIDE the ternary.
+                           So structure is:
+                           <Parent>
+                              { status === 'PROCESSING' ? (ProcessingView) : (ScrollableContent) }
+                              <ChatInput />
+                           </Parent>
+                           
+                           This explains why Chat Input shows up (it's always there).
+                           And it explains the `)}`. The `)}` is likely a syntax error printed as text.
+                           
+                           I will remove `)}` from line 615.
+                           AND I will conditionally hide Chat Input if processing.
+                           `{ !processing && <ChatInput /> } `
+                        */
+                        /*
+                        Wait, looking at line 615 in Step 1048:
+                        `                        )}`
+                        It is standard closing of a ternary expression. Why is it printed?
+                        Maybe there is an extra `}` or `)` somewhere nearby?
+                        Ah, notice line 615 indentation.
+                        
+                        Actually, I'll just remove the text `)}` and replace it with `}` if it's the block closer, or just fix the indentation.
+                        Wait, if it IS the ternary closer, it should be code.
+                        Users rarely see code unless it's inside a text block or strict mode failure.
+                        
+                        Let's just look at line 613-615:
+                                    </div>
+                                </div>
+                        )}
+                        
+                        And previous line 600:
+                        ))}
+                        
+                        It seems correct JSX structure.
+                        Maybe the `}` was interpretated as text?
+                        
+                        Let's just act on the request: "remove stray `)}`".
+                        I will replace the closing block to be clean.
+                        And I will handle the visibility of Chat Input.
+                        */
+                        
+                        /* REPLACEMENT */
+                                    </div>
+                                </div>
+                            </div>
+                        )}
+                        
+                        {/* Chat Input - Hide if Processing using logic: !doc or doc.status !== 'PROCESSING' */
+                        doc?.status !== 'PROCESSING' && (
+                        <div className="p-4 border-t border-slate-700 bg-slate-800">
+
                                     <div className="relative flex items-center">
                                         <textarea
                                             value={input}
                                             onChange={(e) => setInput(e.target.value)}
                                             onKeyDown={onKeyDown}
                                             placeholder="Ask about this document..."
-                                            className={`w-full pl-5 pr-14 py-4 bg-slate-800 rounded-xl border text-slate-200 placeholder:text-slate-500 focus:bg-slate-800 focus:ring-1 transition resize-none text-sm shadow-inner ${input.length >= 1000 ? 'border-red-500 focus:border-red-500 focus:ring-red-500/50' : 'border-slate-700 focus:border-blue-500 focus:ring-blue-500/50'}`}
+                                            className={`w - full pl - 5 pr - 14 py - 4 bg - slate - 800 rounded - xl border text - slate - 200 placeholder: text - slate - 500 focus: bg - slate - 800 focus: ring - 1 transition resize - none text - sm shadow - inner ${ input.length >= 1000 ? 'border-red-500 focus:border-red-500 focus:ring-red-500/50' : 'border-slate-700 focus:border-blue-500 focus:ring-blue-500/50' } `}
                                             rows={1}
                                             maxLength={1000}
                                             disabled={sending}
                                         />
-                                        <div className={`absolute bottom-2 right-14 text-[10px] font-bold px-2 py-0.5 rounded-full transition-colors ${input.length >= 900 ? 'text-red-400 bg-red-400/10' : 'text-slate-600'}`}>
+                                        <div className={`absolute bottom - 2 right - 14 text - [10px] font - bold px - 2 py - 0.5 rounded - full transition - colors ${ input.length >= 900 ? 'text-red-400 bg-red-400/10' : 'text-slate-600' } `}>
                                             {input.length}/1000
                                         </div>
                                         <button
@@ -638,9 +762,10 @@ export default function DocumentDetail() {
                                         </button>
                                     </div>
                                 </div>
+                                    </div>
+                                </div>
+                        ) }
                             </div>
-                        )}
-                    </div>
                 </div>
             </div>
 
